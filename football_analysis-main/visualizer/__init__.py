@@ -1,1 +1,1 @@
-from .visualizer import plot_team_ball_control ,plot_players_speed_distance
+from .visualizer import plot_team_ball_control ,plot_players_speed_distance,plot_players_speed_distance_by_team

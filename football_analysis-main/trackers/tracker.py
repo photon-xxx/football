@@ -7,7 +7,7 @@ import pandas as pd  # 表格数据处理（插值）
 import cv2  # OpenCV 绘图与图像处理
 import sys
 
-sys.path.append('../')  # 将上级目录加入搜索路径，方便导入 utils
+sys.path.append('../')# 将上级目录加入搜索路径，方便导入 utils
 from utils import get_center_of_bbox, get_bbox_width, get_foot_position  # 导入工具函数
 
 
