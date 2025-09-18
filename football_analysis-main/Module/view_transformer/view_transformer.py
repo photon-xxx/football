@@ -7,6 +7,7 @@ class ViewTransformer():  # 定义视角（透视）变换器类
         court_width = 68  # 场地宽度（假设单位米）
         court_length = 23.32  # 场地长度（假设单位米）
 
+        # TODO： 关键点检测
         self.pixel_vertices = np.array([[110, 1035],  # 原图（像素）四个顶点坐标
                                         [265, 275],
                                         [910, 260],
@@ -25,6 +26,7 @@ class ViewTransformer():  # 定义视角（透视）变换器类
         self.persepctive_trasnformer = cv2.getPerspectiveTransform(self.pixel_vertices,
                                                                    self.target_vertices)  # 计算透视变换矩阵
 
+    # TODO：透视变换
     def transform_point(self, point):
         p = (int(point[0]), int(point[1]))  # 将点转换为整数像素坐标元组
         is_inside = cv2.pointPolygonTest(self.pixel_vertices, p, False) >= 0  # 判断点是否在多边形区域内

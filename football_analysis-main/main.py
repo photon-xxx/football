@@ -1,44 +1,57 @@
-from utils import read_video, save_video  # 导入工具函数：读取视频和保存视频
-from trackers import Tracker  # 导入跟踪器类
-import cv2  # OpenCV 库
+from Module.utils import read_video, save_video  # 导入工具函数：读取视频和保存视频
+from Module.trackers import Tracker  # 导入跟踪器类
 import numpy as np  # numpy 数组运算
-from team_assigner import TeamAssigner  # 导入球队分配器
-from player_ball_assigner import PlayerBallAssigner  # 导入球员与球分配器
-from camera_movement_estimator import CameraMovementEstimator  # 导入相机运动估计器
-from view_transformer import ViewTransformer  # 导入视角变换器
-from speed_and_distance_estimator import SpeedAndDistance_Estimator  # 导入速度与距离估计器
-from visualizer import plot_team_ball_control ,plot_players_speed_distance
+from Module.team_assigner import TeamAssigner  # 导入球队分配器
+from Module.player_ball_assigner import PlayerBallAssigner  # 导入球员与球分配器
+from Module.camera_movement_estimator import CameraMovementEstimator  # 导入相机运动估计器
+from Module.view_transformer import ViewTransformer  # 导入视角变换器
+from Module.speed_and_distance_estimator import SpeedAndDistance_Estimator  # 导入速度与距离估计器
+from Module.visualizer import plot_team_ball_control ,plot_players_speed_distance, plot_players_speed_distance_by_team
 
 def main():
+#  ----------------------------------------------------------------------------------------------------------------------#
+
     # Read Video
-    video_frames = read_video('input_videos/08fd33_4.mp4')  # 读取输入视频，得到逐帧图像
+    video_frames = read_video('IO/input_videos/08fd33_4.mp4')  # 读取输入视频，得到逐帧图像
+
+#  ----------------------------------------------------------------------------------------------------------------------#
 
     # Initialize Tracker
-    tracker = Tracker('models/best.pt')  # 初始化目标检测与跟踪器，加载训练好的模型权重
+    tracker = Tracker('Storage/models/yolo/best.pt')  # 初始化目标检测与跟踪器，加载训练好的模型权重
 
     tracks = tracker.get_object_tracks(video_frames,
                                        read_from_stub=True,
-                                       stub_path='stubs/track_stubs.pkl')  # 获取视频中物体的跟踪结果，可从缓存文件读取
+                                       stub_path='Storage/stubs/track_stubs.pkl')  # 获取视频中物体的跟踪结果，可从缓存文件读取
     # Get object positions
     tracker.add_position_to_tracks(tracks)  # 在轨迹中添加物体的位置坐标信息
+
+# ----------------------------------------------------------------------------------------------------------------------#
 
     # camera movement estimator
     camera_movement_estimator = CameraMovementEstimator(video_frames[0])  # 用第一帧初始化相机运动估计器
     camera_movement_per_frame = camera_movement_estimator.get_camera_movement(video_frames,
                                                                               read_from_stub=True,
-                                                                              stub_path='stubs/camera_movement_stub.pkl')  # 获取相机在每一帧的运动（可从缓存读取）
+                                                                              stub_path='Storage/stubs/camera_movement_stub.pkl')  # 获取相机在每一帧的运动（可从缓存读取）
     camera_movement_estimator.add_adjust_positions_to_tracks(tracks, camera_movement_per_frame)  # 根据相机运动修正物体轨迹坐标
+
+# ----------------------------------------------------------------------------------------------------------------------#
 
     # View Trasnformer
     view_transformer = ViewTransformer()  # 初始化视角变换器（像素坐标 -> 场地坐标）
     view_transformer.add_transformed_position_to_tracks(tracks)  # 为轨迹添加透视变换后的坐标
 
+# ----------------------------------------------------------------------------------------------------------------------#
+
     # Interpolate Ball Positions
     tracks["ball"] = tracker.interpolate_ball_positions(tracks["ball"])  # 对球的轨迹插值，补齐丢失的帧位置
+
+# ----------------------------------------------------------------------------------------------------------------------#
 
     # Speed and distance estimator
     speed_and_distance_estimator = SpeedAndDistance_Estimator()  # 初始化速度与距离估计器
     speed_and_distance_estimator.add_speed_and_distance_to_tracks(tracks)  # 在轨迹中加入速度和移动距离
+
+# ----------------------------------------------------------------------------------------------------------------------#
 
     # Assign Player Teams
     team_assigner = TeamAssigner()  # 初始化球队分配器
@@ -52,6 +65,8 @@ def main():
                                                  player_id)  # 根据球员的外观（颜色）分配队伍
             tracks['players'][frame_num][player_id]['team'] = team  # 记录队伍编号
             tracks['players'][frame_num][player_id]['team_color'] = team_assigner.team_colors[team]  # 记录队伍颜色
+
+# ----------------------------------------------------------------------------------------------------------------------#
 
     # Assign Ball Aquisition
     player_assigner = PlayerBallAssigner()  # 初始化球员-球分配器
@@ -67,6 +82,8 @@ def main():
             team_ball_control.append(team_ball_control[-1])  # 默认沿用上一帧的控球队伍
     team_ball_control = np.array(team_ball_control)  # 转为 numpy 数组，方便后续处理
 
+# ----------------------------------------------------------------------------------------------------------------------#
+
     # Draw output
     ## Draw object Tracks
     output_video_frames = tracker.draw_annotations(video_frames, tracks, team_ball_control)  # 在视频帧上绘制检测与跟踪结果
@@ -79,11 +96,13 @@ def main():
     speed_and_distance_estimator.draw_speed_and_distance(output_video_frames, tracks)  # 在视频上绘制速度和移动距离信息
 
     # Save visalizer png
-    plot_team_ball_control(team_ball_control, save_dir="figures")
-    plot_players_speed_distance(tracks, save_dir="figures")
+    plot_team_ball_control(team_ball_control, save_dir="IO/figures")
+    plot_players_speed_distance(tracks, save_dir="IO/figures")
+
+    plot_players_speed_distance_by_team(tracks, save_dir="IO/figures")
 
     # Save video
-    save_video(output_video_frames, 'output_videos/output_video.avi')  # 保存处理后的视频
+    save_video(output_video_frames, 'IO/output_videos/output_video.avi')  # 保存处理后的视频
 
 
 if __name__ == '__main__':  # 程序入口

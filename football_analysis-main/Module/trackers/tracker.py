@@ -7,10 +7,11 @@ import pandas as pd  # 表格数据处理（插值）
 import cv2  # OpenCV 绘图与图像处理
 import sys
 
-sys.path.append('../')# 将上级目录加入搜索路径，方便导入 utils
-from utils import get_center_of_bbox, get_bbox_width, get_foot_position  # 导入工具函数
+sys.path.append('../../')  # 将上级目录加入搜索路径，方便导入 utils
+from Module.utils import get_center_of_bbox, get_bbox_width, get_foot_position  # 导入工具函数
 
 
+# TODO: 追踪器
 class Tracker:  # 定义跟踪器类
     def __init__(self, model_path):
         self.model = YOLO(model_path)  # 加载 YOLO 模型
@@ -99,6 +100,8 @@ class Tracker:  # 定义跟踪器类
 
         return tracks
 
+# ---------------------------------------------------------------------------------------------------------
+# 绘制
     def draw_ellipse(self, frame, bbox, color, track_id=None):
         y2 = int(bbox[3])  # bbox 底部 y
         x_center, _ = get_center_of_bbox(bbox)  # 中心 x

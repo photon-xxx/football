@@ -1,5 +1,7 @@
 from sklearn.cluster import KMeans
 
+
+# TODO：球队分配
 class TeamAssigner:
     def __init__(self):
         self.team_colors = {}
