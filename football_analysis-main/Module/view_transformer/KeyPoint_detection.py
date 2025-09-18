@@ -3,6 +3,7 @@ import cv2
 import supervision as sv
 import numpy as np
 from ultralytics import YOLO
+from collections import deque
 
 # 绝对导入
 from Storage.field_configs.soccer import SoccerPitchConfiguration
@@ -21,13 +22,24 @@ class KeyPointDetector:
     使用 YOLO 模型检测球场上的关键点
     """
 
-    def __init__(self, device: str = "cpu"):
+    def __init__(self, device: str = "cpu", window_size: int = 5, ema_alpha: float =0.7):   #TODO: 确定平滑参数
         """
         Args:
             device (str): 推理设备, 如 'cpu' 或 'cuda'
+            window_size (int): 滑动平均的窗口大小
+            ema_alpha (float): EMA的平滑系数，0<alpha<=1，越大越依赖最新值
         """
         self.model = YOLO(PITCH_DETECTION_MODEL_PATH).to(device=device)
         self.device = device
+
+        self.window_size = window_size
+        self.ema_alpha = ema_alpha
+
+        # 用于存储历史关键点
+        self.history = deque(maxlen=window_size)
+        self.ema_prev = None
+
+
 
     def detect_keypoints(self, frame: np.ndarray) -> sv.KeyPoints:
         """
@@ -43,23 +55,61 @@ class KeyPointDetector:
         keypoints = sv.KeyPoints.from_ultralytics(result)
 
         # 调试
-        print(keypoints)
+        # print(keypoints)
         return keypoints
 
-    def detect_from_video(self, video_path: str, stride: int = 1, conf_threshold: float = 0.7):  # TODO: 关键点的平滑处理
+    def smooth_keypoints(self, xy: np.ndarray, method: str = "none") -> np.ndarray:
+        """
+        对关键点进行平滑处理，支持 NaN 占位的情况
+
+        Args:
+            xy (np.ndarray): 当前帧关键点，shape (N, 2)，可能包含 NaN
+            method (str): 平滑方式 ["none", "moving", "ema"]
+
+        Returns:
+            np.ndarray: 平滑后的关键点 (N, 2)
+        """
+        if method == "none" or xy is None or len(xy) == 0:
+            return xy
+
+        if method == "moving":
+            self.history.append(xy)
+            stacked = np.stack(self.history, axis=0)  # (T, N, 2)
+
+            # 对 NaN 做 nanmean，避免传染
+            return np.nanmean(stacked, axis=0)
+
+        elif method == "ema":
+            if self.ema_prev is None:
+                self.ema_prev = xy.copy()
+
+            # 逐点处理：当前帧是 NaN 的点，用上一帧的值
+            updated = np.where(
+                np.isnan(xy),
+                self.ema_prev,  # 保留上一次的
+                self.ema_alpha * xy + (1 - self.ema_alpha) * self.ema_prev
+            )
+            self.ema_prev = updated
+            return updated
+
+        else:
+            raise ValueError(f"Unsupported smoothing method: {method}")
+
+    def detect_from_video(self, video_path: str, stride: int = 1, conf_threshold: float = 0.6, smoothing: str = "moving"):  # 平滑可选
         """
         在视频中逐帧检测关键点 (生成器)
 
         Args:
             video_path (str): 输入视频路径
             stride (int): 帧间隔，默认每帧都检测
-            conf_threshold (float): 关键点置信度阈值，低于该值的点会被过滤
+            conf_threshold (float): 关键点置信度阈值，低于该值的点会被过滤,置为NaN
                                    // 置信度取得较高，矩阵的计算只需要最少四个点就够
+            smoothing (str): 平滑方法 ["none", "moving", "ema"]
 
         Yields:
             (frame, keypoints, indices):
                 frame: 原始帧
-                keypoints: 过滤后的关键点对象
+                keypoints: 过滤后的关键点对象，只是把低置信度的点置为NaN
                 indices: 过滤后关键点对应的原始序号
         """
         frame_gen = sv.get_video_frames_generator(source_path=video_path, stride=stride)
@@ -69,13 +119,20 @@ class KeyPointDetector:
             filtered_idx = None  # 默认没有过滤
             # 根据置信度过滤关键点
             if keypoints.confidence is not None:
+
+                all_xy = np.full(keypoints.xy[0].shape, np.nan, dtype=np.float32)
                 mask = keypoints.confidence[0] > conf_threshold
-                filtered_xy = keypoints.xy[0][mask]
+                all_xy[mask] = keypoints.xy[0][mask]
+
                 filtered_idx = np.where(mask)[0]
 
+                #平滑调用
+                all_conf = np.full(keypoints.confidence.shape, np.nan, dtype=np.float32)
+                all_conf[:, mask] = keypoints.confidence[:, mask]
+
                 keypoints = sv.KeyPoints(
-                    xy=filtered_xy[np.newaxis, ...],
-                    confidence=keypoints.confidence[:, mask] if keypoints.confidence is not None else None
+                    xy=all_xy[np.newaxis, ...],   # 低置信度点被置为NaN
+                    confidence=all_conf
                 )
 
             yield frame, keypoints, filtered_idx
@@ -91,8 +148,8 @@ class KeyPointDetector:
 
         Args:
             frame (np.ndarray): 输入图像
-            keypoints (sv.KeyPoints): 已经过滤的关键点
-            indices (np.ndarray): 关键点对应的原始序号（来自 detect_from_video 的 filtered_idx）
+            keypoints (sv.KeyPoints): 已经过滤并保留 NaN 占位的关键点
+            indices (np.ndarray): 关键点对应的原始序号
 
         Returns:
             np.ndarray: 带标注的图像
@@ -102,26 +159,25 @@ class KeyPointDetector:
 
         annotated = frame.copy()
 
-        # ✅ 先画红点
-        vertex_annotator = sv.VertexAnnotator(
-            color=sv.Color.from_hex("#FF0000"),
-            radius=6
-        )
-        annotated = vertex_annotator.annotate(annotated, keypoints)
+        # ✅ 逐点绘制
+        for idx, (x, y) in enumerate(keypoints.xy[0]):
+            if np.isnan(x) or np.isnan(y):
+                continue  # 跳过 NaN
 
-        # ✅ 再标注编号
-        if indices is not None:
-            for (x, y), idx in zip(keypoints.xy[0], indices):
-                cv2.putText(
-                    annotated,
-                    str(idx),  # 原始序号
-                    (int(x) + 5, int(y) - 5),  # 点的右上方
-                    cv2.FONT_HERSHEY_SIMPLEX,
-                    0.5,  # 字号
-                    (0, 255, 0),  # 绿色文字
-                    1,  # 线宽
-                    cv2.LINE_AA
-                )
+            # 红点
+            cv2.circle(annotated, (int(x), int(y)), 6, (0, 0, 255), -1)
+
+            # 标注编号
+            cv2.putText(
+                annotated,
+                str(idx),  # 原始序号
+                (int(x) + 5, int(y) - 5),
+                cv2.FONT_HERSHEY_SIMPLEX,
+                0.5,  # 字号
+                (0, 255, 0),  # 绿色文字
+                1,
+                cv2.LINE_AA
+            )
 
         return annotated
 
