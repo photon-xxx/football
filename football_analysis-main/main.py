@@ -36,9 +36,9 @@ def main():
 
 # ----------------------------------------------------------------------------------------------------------------------#
 
-    # View Trasnformer
-    view_transformer = ViewTransformer()  # 初始化视角变换器（像素坐标 -> 场地坐标）
-    view_transformer.add_transformed_position_to_tracks(tracks)  # 为轨迹添加透视变换后的坐标
+    # View Transformer
+    view_transformer = ViewTransformer(auto_detect=True, device="cpu")  # 初始化视角变换器（像素坐标 -> 场地坐标）
+    view_transformer.add_transformed_position_to_tracks(tracks, video_frames)  # 为轨迹添加透视变换后的坐标
 
 # ----------------------------------------------------------------------------------------------------------------------#
 
