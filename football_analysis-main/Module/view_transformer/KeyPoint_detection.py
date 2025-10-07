@@ -95,12 +95,12 @@ class KeyPointDetector:
         else:
             raise ValueError(f"Unsupported smoothing method: {method}")
 
-    def detect_from_video(self, video_path: str, stride: int = 1, conf_threshold: float = 0.6, smoothing: str = "moving"):  # 平滑可选
+    def detect_from_video(self, video_frames, stride: int = 1, conf_threshold: float = 0.6, smoothing: str = "moving"):  # 平滑可选
         """
-        在视频中逐帧检测关键点 (生成器)
+        在视频帧中逐帧检测关键点 (生成器)
 
         Args:
-            video_path (str): 输入视频路径
+            video_frames: 输入视频帧列表
             stride (int): 帧间隔，默认每帧都检测
             conf_threshold (float): 关键点置信度阈值，低于该值的点会被过滤,置为NaN
                                    // 置信度取得较高，矩阵的计算只需要最少四个点就够
@@ -112,8 +112,9 @@ class KeyPointDetector:
                 keypoints: 过滤后的关键点对象，只是把低置信度的点置为NaN
                 indices: 过滤后关键点对应的原始序号
         """
-        frame_gen = sv.get_video_frames_generator(source_path=video_path, stride=stride)
-        for frame in frame_gen:
+        for frame_idx, frame in enumerate(video_frames):
+            if frame_idx % stride != 0:
+                continue
             keypoints = self.detect_keypoints(frame)
 
             filtered_idx = None  # 默认没有过滤
@@ -185,17 +186,67 @@ class KeyPointDetector:
 # -------------------- 测试入口 --------------------
 if __name__ == "__main__":
     import argparse
+    import os
+    from pathlib import Path
 
     parser = argparse.ArgumentParser(description="KeyPoint Detection for Football Pitch")
     parser.add_argument("--video", type=str, required=True, help="输入视频路径")
     parser.add_argument("--device", type=str, default="cpu", help="运行设备: cpu/cuda")
+    parser.add_argument("--save_video", action="store_true", help="是否保存测试结果视频")
+    parser.add_argument("--output_dir", type=str, default="IO/output_videos/test", help="输出视频目录")
     args = parser.parse_args()
 
     detector = KeyPointDetector(device=args.device)
 
-    for frame, keypoints, indices in detector.detect_from_video(args.video, stride=1):  # TODO：stride 选取适当的数值
-        annotated = detector.visualize_keypoints(frame, keypoints, indices)
-        cv2.imshow("KeyPoints", annotated)
-        if cv2.waitKey(1) & 0xFF == ord("q"):
-            break
-    cv2.destroyAllWindows()
+    # 创建输出目录
+    output_dir = Path(args.output_dir)
+    output_dir.mkdir(parents=True, exist_ok=True)
+
+    # 获取输入视频文件名（不含扩展名）
+    input_video_path = Path(args.video)
+    video_name = input_video_path.stem
+    output_video_path = output_dir / f"{video_name}_test.mp4"
+
+    # 初始化视频写入器
+    video_writer = None
+    frame_count = 0
+
+    print(f"开始处理视频: {args.video}")
+    print(f"输出视频将保存到: {output_video_path}")
+
+    try:
+        for frame, keypoints, indices in detector.detect_from_video(args.video, stride=1):
+            annotated = detector.visualize_keypoints(frame, keypoints, indices)
+            
+            # 初始化视频写入器（使用第一帧的尺寸）
+            if video_writer is None and args.save_video:
+                height, width = annotated.shape[:2]
+                fourcc = cv2.VideoWriter_fourcc(*'mp4v')
+                video_writer = cv2.VideoWriter(str(output_video_path), fourcc, 24.0, (width, height))
+                print(f"视频写入器已初始化: {width}x{height}")
+            
+            # 保存帧到视频文件
+            if video_writer is not None:
+                video_writer.write(annotated)
+                frame_count += 1
+                if frame_count % 100 == 0:
+                    print(f"已处理 {frame_count} 帧")
+            
+            # 显示实时预览
+            cv2.imshow("KeyPoints", annotated)
+            if cv2.waitKey(1) & 0xFF == ord("q"):
+                break
+                
+    except KeyboardInterrupt:
+        print("\n用户中断处理")
+    except Exception as e:
+        print(f"处理过程中出现错误: {e}")
+    finally:
+        # 清理资源
+        if video_writer is not None:
+            video_writer.release()
+            print(f"视频已保存到: {output_video_path}")
+            print(f"总共处理了 {frame_count} 帧")
+        
+        cv2.destroyAllWindows()
+        print("处理完成")

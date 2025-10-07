@@ -4,24 +4,24 @@ from typing import List, Tuple
 
 @dataclass
 class SoccerPitchConfiguration:
-    width: int = 7000  # [cm]
-    length: int = 12000  # [cm]
-    penalty_box_width: int = 4100  # [cm]
-    penalty_box_length: int = 2015  # [cm]
-    goal_box_width: int = 1832  # [cm]
-    goal_box_length: int = 550  # [cm]
-    centre_circle_radius: int = 915  # [cm]
-    penalty_spot_distance: int = 1100  # [cm]
+    width: float = 70.0  # [m]
+    length: float = 120.0  # [m]
+    penalty_box_width: float = 41.0  # [m]
+    penalty_box_length: float = 20.15  # [m]
+    goal_box_width: float = 18.32  # [m]
+    goal_box_length: float = 5.5  # [m]
+    centre_circle_radius: float = 9.15  # [m]
+    penalty_spot_distance: float = 11.0  # [m]
 
     @property
-    def vertices(self) -> List[Tuple[int, int]]:
+    def vertices(self) -> List[Tuple[float, float]]:
         return [
-            (0, 0),  # 1
-            (0, (self.width - self.penalty_box_width) / 2),  # 2
-            (0, (self.width - self.goal_box_width) / 2),  # 3
-            (0, (self.width + self.goal_box_width) / 2),  # 4
-            (0, (self.width + self.penalty_box_width) / 2),  # 5
-            (0, self.width),  # 6
+            (0.0, 0.0),  # 1
+            (0.0, (self.width - self.penalty_box_width) / 2),  # 2
+            (0.0, (self.width - self.goal_box_width) / 2),  # 3
+            (0.0, (self.width + self.goal_box_width) / 2),  # 4
+            (0.0, (self.width + self.penalty_box_width) / 2),  # 5
+            (0.0, self.width),  # 6
             (self.goal_box_length, (self.width - self.goal_box_width) / 2),  # 7
             (self.goal_box_length, (self.width + self.goal_box_width) / 2),  # 8
             (self.penalty_spot_distance, self.width / 2),  # 9
@@ -29,7 +29,7 @@ class SoccerPitchConfiguration:
             (self.penalty_box_length, (self.width - self.goal_box_width) / 2),  # 11
             (self.penalty_box_length, (self.width + self.goal_box_width) / 2),  # 12
             (self.penalty_box_length, (self.width + self.penalty_box_width) / 2),  # 13
-            (self.length / 2, 0),  # 14
+            (self.length / 2, 0.0),  # 14
             (self.length / 2, self.width / 2 - self.centre_circle_radius),  # 15
             (self.length / 2, self.width / 2 + self.centre_circle_radius),  # 16
             (self.length / 2, self.width),  # 17
@@ -58,7 +58,7 @@ class SoccerPitchConfiguration:
                 self.length - self.goal_box_length,
                 (self.width + self.goal_box_width) / 2
             ),  # 24
-            (self.length, 0),  # 25
+            (self.length, 0.0),  # 25
             (self.length, (self.width - self.penalty_box_width) / 2),  # 26
             (self.length, (self.width - self.goal_box_width) / 2),  # 27
             (self.length, (self.width + self.goal_box_width) / 2),  # 28
