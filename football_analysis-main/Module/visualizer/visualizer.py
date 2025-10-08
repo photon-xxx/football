@@ -2,6 +2,8 @@ import os
 import numpy as np
 import matplotlib.pyplot as plt
 
+# TODO:参考draw——pitch绘制球场
+
 def plot_team_ball_control(team_ball_control, save_dir="figures"):
     """
     绘制两队控球率随时间变化的折线图

@@ -133,7 +133,7 @@ class KeyPointDetector:
 
                 keypoints = sv.KeyPoints(
                     xy=all_xy[np.newaxis, ...],   # 低置信度点被置为NaN
-                    confidence=all_conf
+                    confidence=all_conf[0:1]  # 取第一行，保持2D形状 (1, 32)
                 )
 
             yield frame, keypoints, filtered_idx

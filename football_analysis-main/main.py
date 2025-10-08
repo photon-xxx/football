@@ -7,21 +7,46 @@ from Module.camera_movement_estimator import CameraMovementEstimator  # 导入�
 from Module.view_transformer import ViewTransformer  # 导入视角变换器
 from Module.speed_and_distance_estimator import SpeedAndDistance_Estimator  # 导入速度与距离估计器
 from Module.visualizer import plot_team_ball_control ,plot_players_speed_distance, plot_players_speed_distance_by_team
+from Module.test import TestRunner  # 导入测试运行器
+
+# =====================================================================================================================
+# 全局配置变量 - 所有路径和参数设置
+# =====================================================================================================================
+
+# 输入视频路径
+INPUT_VIDEO_PATH = 'IO/input_videos/clip_30s.mp4'
+
+# 模型路径
+YOLO_MODEL_PATH = 'Storage/models/yolo/best.pt'
+
+# 缓存文件路径
+TRACK_STUB_PATH = 'Storage/stubs/track_stubs.pkl'
+CAMERA_MOVEMENT_STUB_PATH = 'Storage/stubs/camera_movement_stub.pkl'
+
+# 输出路径
+OUTPUT_VIDEO_PATH = 'IO/output_videos/output_video.avi'
+FIGURES_SAVE_DIR = 'IO/figures'
+
+# 设备配置
+DEVICE = "cuda"  # 可选: "cpu" 或 "cuda"
+
+# 缓存读取设置
+READ_FROM_STUB = False  # 是否从缓存文件读取结果
 
 def main():
 #  ----------------------------------------------------------------------------------------------------------------------#
 
     # Read Video
-    video_frames = read_video('IO/input_videos/08fd33_4.mp4')  # 读取输入视频，得到逐帧图像
+    video_frames = read_video(INPUT_VIDEO_PATH)  # 读取输入视频，得到逐帧图像
 
 #  ----------------------------------------------------------------------------------------------------------------------#
 
     # Initialize Tracker
-    tracker = Tracker('Storage/models/yolo/best.pt')  # 初始化目标检测与跟踪器，加载训练好的模型权重
+    tracker = Tracker(YOLO_MODEL_PATH)  # 初始化目标检测与跟踪器，加载训练好的模型权重
 
     tracks = tracker.get_object_tracks(video_frames,
-                                       read_from_stub=True,
-                                       stub_path='Storage/stubs/track_stubs.pkl')  # 获取视频中物体的跟踪结果，可从缓存文件读取
+                                       read_from_stub=READ_FROM_STUB,
+                                       stub_path=TRACK_STUB_PATH)  # 获取视频中物体的跟踪结果，可从缓存文件读取
     # Get object positions
     tracker.add_position_to_tracks(tracks)  # 在轨迹中添加物体的位置坐标信息
 
@@ -30,14 +55,14 @@ def main():
     # camera movement estimator
     camera_movement_estimator = CameraMovementEstimator(video_frames[0])  # 用第一帧初始化相机运动估计器
     camera_movement_per_frame = camera_movement_estimator.get_camera_movement(video_frames,
-                                                                              read_from_stub=True,
-                                                                              stub_path='Storage/stubs/camera_movement_stub.pkl')  # 获取相机在每一帧的运动（可从缓存读取）
+                                                                              read_from_stub=READ_FROM_STUB,
+                                                                              stub_path=CAMERA_MOVEMENT_STUB_PATH)  # 获取相机在每一帧的运动（可从缓存读取）
     camera_movement_estimator.add_adjust_positions_to_tracks(tracks, camera_movement_per_frame)  # 根据相机运动修正物体轨迹坐标
 
 # ----------------------------------------------------------------------------------------------------------------------#
 
     # View Trasnformer
-    view_transformer = ViewTransformer()  # 初始化视角变换器（像素坐标 -> 场地坐标）
+    view_transformer = ViewTransformer(video_frames, device=DEVICE)  # 初始化视角变换器（像素坐标 -> 场地坐标）
     view_transformer.add_transformed_position_to_tracks(tracks)  # 为轨迹添加透视变换后的坐标
 
 # ----------------------------------------------------------------------------------------------------------------------#
@@ -96,14 +121,50 @@ def main():
     speed_and_distance_estimator.draw_speed_and_distance(output_video_frames, tracks)  # 在视频上绘制速度和移动距离信息
 
     # Save visalizer png
-    plot_team_ball_control(team_ball_control, save_dir="IO/figures")
-    plot_players_speed_distance(tracks, save_dir="IO/figures")
+    plot_team_ball_control(team_ball_control, save_dir=FIGURES_SAVE_DIR)
+    plot_players_speed_distance(tracks, save_dir=FIGURES_SAVE_DIR)
 
-    plot_players_speed_distance_by_team(tracks, save_dir="IO/figures")
+    plot_players_speed_distance_by_team(tracks, save_dir=FIGURES_SAVE_DIR)
 
     # Save video
-    save_video(output_video_frames, 'IO/output_videos/output_video.avi')  # 保存处理后的视频
+    save_video(output_video_frames, OUTPUT_VIDEO_PATH)  # 保存处理后的视频
 
 
 if __name__ == '__main__':  # 程序入口
-    main()  # 调用主函数
+    #main()  # 调用主函数
+#  ----------------------------------------------------------------------------------------------------------------------#
+
+    # Read Video
+    video_frames = read_video(INPUT_VIDEO_PATH)  # 读取输入视频，得到逐帧图像
+
+#  ----------------------------------------------------------------------------------------------------------------------#
+
+    # Initialize Tracker
+    tracker = Tracker(YOLO_MODEL_PATH)  # 初始化目标检测与跟踪器，加载训练好的模型权重
+
+    tracks = tracker.get_object_tracks(video_frames,
+                                       read_from_stub=READ_FROM_STUB,
+                                       stub_path=TRACK_STUB_PATH)  # 获取视频中物体的跟踪结果，可从缓存文件读取
+    # Get object positions
+    tracker.add_position_to_tracks(tracks)  # 在轨迹中添加物体的位置坐标信息
+
+# ----------------------------------------------------------------------------------------------------------------------#
+
+    # camera movement estimator
+    camera_movement_estimator = CameraMovementEstimator(video_frames[0])  # 用第一帧初始化相机运动估计器
+    camera_movement_per_frame = camera_movement_estimator.get_camera_movement(video_frames,
+                                                                              read_from_stub=READ_FROM_STUB,
+                                                                              stub_path=CAMERA_MOVEMENT_STUB_PATH)  # 获取相机在每一帧的运动（可从缓存读取）
+    camera_movement_estimator.add_adjust_positions_to_tracks(tracks, camera_movement_per_frame)  # 根据相机运动修正物体轨迹坐标
+
+# ----------------------------------------------------------------------------------------------------------------------#
+
+    # View Trasnformer
+    view_transformer = ViewTransformer(video_frames, device=DEVICE)  # 初始化视角变换器（像素坐标 -> 场地坐标）
+    view_transformer.add_transformed_position_to_tracks(tracks)  # 为轨迹添加透视变换后的坐标
+
+# ----------------------------------------------------------------------------------------------------------------------#
+
+    # 运行测试
+    test_runner = TestRunner(FIGURES_SAVE_DIR)
+    test_runner.run_full_test(tracks, video_frames, sample_rate=1)
