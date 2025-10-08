@@ -18,6 +18,7 @@ INPUT_VIDEO_PATH = 'IO/input_videos/clip_30s.mp4'
 
 # 模型路径
 YOLO_MODEL_PATH = 'Storage/models/yolo/best.pt'
+ROBOFLOW_MODEL_PATH = 'Storage/models/Player_detection/football-player-detection.pt'
 
 # 缓存文件路径
 TRACK_STUB_PATH = 'Storage/stubs/track_stubs.pkl'
@@ -140,7 +141,7 @@ if __name__ == '__main__':  # 程序入口
 #  ----------------------------------------------------------------------------------------------------------------------#
 
     # Initialize Tracker
-    tracker = Tracker(YOLO_MODEL_PATH)  # 初始化目标检测与跟踪器，加载训练好的模型权重
+    tracker = Tracker(ROBOFLOW_MODEL_PATH)  # 初始化目标检测与跟踪器，加载训练好的模型权重
 
     tracks = tracker.get_object_tracks(video_frames,
                                        read_from_stub=READ_FROM_STUB,
