@@ -14,6 +14,7 @@ except ImportError:
     # 如果相对导入失败，使用绝对导入
     from Module.view_transformer.KeyPoint_detection import KeyPointDetector
 
+#TODO: 注意soccer设置变换为初始的cm度量，转换需要注意
 
 class ViewTransformer():  # 定义视角（透视）变换器类
     def __init__(self, video_frames, device="cpu"):  # 构造函数：初始化参数与透视变换矩阵
@@ -139,6 +140,12 @@ class ViewTransformer():  # 定义视角（透视）变换器类
     def add_transformed_position_to_tracks(self, tracks):
         for object, object_tracks in tracks.items():
             for frame_num, track in enumerate(object_tracks):
+
+                # print("#########frame_num_test#########")
+                # print(frame_num if frame_num % 96 == 0 else "")
+                # print("#########frame_num_test#########")
+                # 测试
+
                 for track_id, track_info in track.items():
                     position = track_info['position_adjusted']
                     position = np.array(position)
@@ -156,7 +163,7 @@ if __name__ == "__main__":
     import argparse
     
     parser = argparse.ArgumentParser(description="ViewTransformer 测试")
-    parser.add_argument("--video", type=str, default="IO/input_videos/08fd33_4.mp4", help="输入视频路径")
+    parser.add_argument("--video", type=str, default="E:\Soccer\\football\\football_analysis-main\IO\input_videos\\test.mp4", help="输入视频路径")
     parser.add_argument("--device", type=str, default="cpu", help="运行设备: cpu/cuda")
     args = parser.parse_args()
     
@@ -168,9 +175,24 @@ if __name__ == "__main__":
     print()
     
     try:
+        # 读取视频帧
+        print("正在读取视频帧...")
+        import cv2
+        cap = cv2.VideoCapture(args.video)
+        video_frames = []
+        
+        while True:
+            ret, frame = cap.read()
+            if not ret:
+                break
+            video_frames.append(frame)
+        
+        cap.release()
+        print(f"成功读取 {len(video_frames)} 帧")
+        
         # 初始化 ViewTransformer
         print("正在初始化 ViewTransformer...")
-        view_transformer = ViewTransformer(args.video, device=args.device)
+        view_transformer = ViewTransformer(video_frames, device=args.device)
         
         # 检查透视变换矩阵
         if len(view_transformer.perspective_transformers) > 0:
@@ -247,7 +269,7 @@ if __name__ == "__main__":
         
         # 创建test目录
         import os
-        test_dir = "IO/output_videos/test"
+        test_dir = "E:\Soccer\\football\\football_analysis-main\IO\output_videos"
         if not os.path.exists(test_dir):
             os.makedirs(test_dir)
         

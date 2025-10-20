@@ -7,32 +7,43 @@ from Module.camera_movement_estimator import CameraMovementEstimator  # 导入�
 from Module.view_transformer import ViewTransformer  # 导入视角变换器
 from Module.speed_and_distance_estimator import SpeedAndDistance_Estimator  # 导入速度与距离估计器
 from Module.visualizer import plot_team_ball_control ,plot_players_speed_distance, plot_players_speed_distance_by_team
-from Module.test import TestRunner  # 导入测试运行器
+#from Module.test import TestRunner  # 导入测试运行器
+import supervision as sv
+from Storage.field_configs.soccer import SoccerPitchConfiguration
+from Module.ball import extract_ball_paths
+from Module.visualizer.pitch_annotation_tool import draw_pitch, draw_paths_on_pitch
 
 # =====================================================================================================================
 # 全局配置变量 - 所有路径和参数设置
 # =====================================================================================================================
 
+# 项目根目录
+import os
+PROJECT_ROOT = os.path.dirname(os.path.abspath(__file__))
+
 # 输入视频路径
-INPUT_VIDEO_PATH = 'IO/input_videos/clip_30s.mp4'
+INPUT_VIDEO_PATH = os.path.join(PROJECT_ROOT, 'IO', 'input_videos', 'test.mp4')
 
 # 模型路径
-YOLO_MODEL_PATH = 'Storage/models/yolo/best.pt'
-ROBOFLOW_MODEL_PATH = 'Storage/models/Player_detection/football-player-detection.pt'
+YOLO_MODEL_PATH = os.path.join(PROJECT_ROOT, 'Storage', 'models', 'yolo', 'best.pt')
+ROBOFLOW_MODEL_PATH = os.path.join(PROJECT_ROOT, 'Storage', 'models', 'Player_detection', 'football-player-detection.pt')
+
+# 球场配置路径
+PITCH_CONFIG = SoccerPitchConfiguration()
 
 # 缓存文件路径
-TRACK_STUB_PATH = 'Storage/stubs/track_stubs.pkl'
-CAMERA_MOVEMENT_STUB_PATH = 'Storage/stubs/camera_movement_stub.pkl'
+TRACK_STUB_PATH = os.path.join(PROJECT_ROOT, 'Storage', 'stubs', 'track_stubs.pkl')
+CAMERA_MOVEMENT_STUB_PATH = os.path.join(PROJECT_ROOT, 'Storage', 'stubs', 'camera_movement_stub.pkl')
 
 # 输出路径
-OUTPUT_VIDEO_PATH = 'IO/output_videos/output_video.avi'
-FIGURES_SAVE_DIR = 'IO/figures'
+OUTPUT_VIDEO_PATH = os.path.join(PROJECT_ROOT, 'IO', 'output_videos', 'output_video.avi')
+FIGURES_SAVE_DIR = os.path.join(PROJECT_ROOT, 'IO', 'figures')
 
 # 设备配置
 DEVICE = "cuda"  # 可选: "cpu" 或 "cuda"
 
 # 缓存读取设置
-READ_FROM_STUB = False  # 是否从缓存文件读取结果
+READ_FROM_STUB = True  # 是否从缓存文件读取结果
 
 def main():
 #  ----------------------------------------------------------------------------------------------------------------------#
@@ -43,7 +54,7 @@ def main():
 #  ----------------------------------------------------------------------------------------------------------------------#
 
     # Initialize Tracker
-    tracker = Tracker(YOLO_MODEL_PATH)  # 初始化目标检测与跟踪器，加载训练好的模型权重
+    tracker = Tracker(ROBOFLOW_MODEL_PATH)  # 初始化目标检测与跟踪器，加载训练好的模型权重
 
     tracks = tracker.get_object_tracks(video_frames,
                                        read_from_stub=READ_FROM_STUB,
@@ -167,5 +178,22 @@ if __name__ == '__main__':  # 程序入口
 # ----------------------------------------------------------------------------------------------------------------------#
 
     # 运行测试
-    test_runner = TestRunner(FIGURES_SAVE_DIR)
-    test_runner.run_full_test(tracks, video_frames, sample_rate=1)
+    # test_runner = TestRunner(FIGURES_SAVE_DIR)
+    # test_runner.run_full_test(tracks, video_frames, sample_rate=1)
+
+    # ball_frame0 = tracks["ball"][0]
+    # ball_id = list(ball_frame0.keys())[0]
+    # print(ball_frame0[ball_id]["transformed_position"])
+
+
+    ball_paths = extract_ball_paths(tracks)
+
+    BALL_on_PITCH = draw_pitch(PITCH_CONFIG)
+
+    BALL_on_PITCH = draw_paths_on_pitch(
+    config=PITCH_CONFIG,
+    paths=ball_paths,
+    color=sv.Color.WHITE,
+    pitch=BALL_on_PITCH)
+
+    sv.plot_image(BALL_on_PITCH)

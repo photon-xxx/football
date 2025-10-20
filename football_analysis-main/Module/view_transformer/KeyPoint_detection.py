@@ -10,9 +10,7 @@ from Storage.field_configs.soccer import SoccerPitchConfiguration
 
 # 模型路径
 PARENT_DIR = os.path.dirname(os.path.abspath(__file__))
-PITCH_DETECTION_MODEL_PATH = os.path.join(PARENT_DIR,
-                                          "E:/Soccer/football/football_analysis-main/Storage/models/KeyPoint_detection/football-pitch-detection.pt")
-
+PITCH_DETECTION_MODEL_PATH = "E:/Soccer/football/football_analysis-main/Storage/models/KeyPoint_detection/football-pitch-detection.pt"
 # 全局配置
 CONFIG = SoccerPitchConfiguration()
 

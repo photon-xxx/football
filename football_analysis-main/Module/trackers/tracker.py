@@ -30,7 +30,8 @@ class Tracker:  # 定义跟踪器类
                         position = get_foot_position(bbox)  # 球员/裁判用脚下点
                     tracks[object][frame_num][track_id]['position'] = position  # 写入位置
 
-    def interpolate_ball_positions(self, ball_positions):
+    def interpolate_ball_positions(self, ball_positions): 
+        #处理将球位置置为NAN的帧
         ball_positions = [x.get(1, {}).get('bbox', []) for x in ball_positions]  # 提取每帧球的 bbox
         df_ball_positions = pd.DataFrame(ball_positions, columns=['x1', 'y1', 'x2', 'y2'])  # 转为 DataFrame
 
@@ -40,7 +41,7 @@ class Tracker:  # 定义跟踪器类
         ball_positions = [{1: {"bbox": x}} for x in df_ball_positions.to_numpy().tolist()]  # 转回字典列表格式
         return ball_positions
 
-    def detect_frames(self, frames, batch_size = 20):
+    def detect_frames(self, frames, batch_size = 10): #处理批次控制
         detections = []
         for i in range(0, len(frames), batch_size):
             batch_frames = frames[i:i + batch_size]
@@ -116,7 +117,7 @@ class Tracker:  # 定义跟踪器类
         return tracks
 
 # ---------------------------------------------------------------------------------------------------------
-# 绘制
+# 绘制 TODO:封装到visualizer/tracker-draw
     def draw_ellipse(self, frame, bbox, color, track_id=None):
         y2 = int(bbox[3])  # bbox 底部 y
         x_center, _ = get_center_of_bbox(bbox)  # 中心 x
