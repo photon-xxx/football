@@ -41,7 +41,7 @@ class Tracker:  # 定义跟踪器类
         ball_positions = [{1: {"bbox": x}} for x in df_ball_positions.to_numpy().tolist()]  # 转回字典列表格式
         return ball_positions
 
-    def detect_frames(self, frames, batch_size = 10): #处理批次控制
+    def detect_frames(self, frames, batch_size = 12): #处理批次控制
         detections = []
         for i in range(0, len(frames), batch_size):
             batch_frames = frames[i:i + batch_size]

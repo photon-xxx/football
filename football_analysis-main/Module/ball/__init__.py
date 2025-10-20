@@ -1,1 +1,1 @@
-from .ball import extract_ball_paths
+from .ball import extract_ball_paths, replace_outliers_based_on_distance

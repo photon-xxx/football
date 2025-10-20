@@ -10,7 +10,7 @@ from Module.visualizer import plot_team_ball_control ,plot_players_speed_distanc
 #from Module.test import TestRunner  # 导入测试运行器
 import supervision as sv
 from Storage.field_configs.soccer import SoccerPitchConfiguration
-from Module.ball import extract_ball_paths
+from Module.ball import extract_ball_paths, replace_outliers_based_on_distance
 from Module.visualizer.pitch_annotation_tool import draw_pitch, draw_paths_on_pitch
 
 # =====================================================================================================================
@@ -43,7 +43,7 @@ FIGURES_SAVE_DIR = os.path.join(PROJECT_ROOT, 'IO', 'figures')
 DEVICE = "cuda"  # 可选: "cpu" 或 "cuda"
 
 # 缓存读取设置
-READ_FROM_STUB = False  # 是否从缓存文件读取结果
+READ_FROM_STUB = True  # 是否从缓存文件读取结果
 
 def main():
 #  ----------------------------------------------------------------------------------------------------------------------#
@@ -187,6 +187,8 @@ if __name__ == '__main__':  # 程序入口
 
 
     ball_paths = extract_ball_paths(tracks)
+
+    ball_paths = replace_outliers_based_on_distance(ball_paths)
 
     BALL_on_PITCH = draw_pitch(PITCH_CONFIG)
 
