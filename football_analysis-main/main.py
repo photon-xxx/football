@@ -43,7 +43,7 @@ FIGURES_SAVE_DIR = os.path.join(PROJECT_ROOT, 'IO', 'figures')
 DEVICE = "cuda"  # 可选: "cpu" 或 "cuda"
 
 # 缓存读取设置
-READ_FROM_STUB = True  # 是否从缓存文件读取结果
+READ_FROM_STUB = False  # 是否从缓存文件读取结果
 
 def main():
 #  ----------------------------------------------------------------------------------------------------------------------#

@@ -2,7 +2,7 @@ import numpy as np  # 导入 numpy，处理数组与数值运算
 import cv2  # 导入 OpenCV，用于图像处理与透视变换
 import sys
 import os
-
+from collections import deque           # 用于保存最近若干帧的变换矩阵（实现平滑）
 # 添加项目根目录到路径
 sys.path.append(os.path.join(os.path.dirname(__file__), '../../'))
 from Storage.field_configs.soccer import SoccerPitchConfiguration
@@ -14,7 +14,13 @@ except ImportError:
     # 如果相对导入失败，使用绝对导入
     from Module.view_transformer.KeyPoint_detection import KeyPointDetector
 
-#TODO: 注意soccer设置变换为初始的cm度量，转换需要注意
+
+MAXLEN = 5  # 存储最近10帧的透视变换矩阵（用于平滑）
+M = deque(maxlen=MAXLEN) # 存储最近MAXLEN帧的透视变换矩阵（用于平滑）
+
+USE_SMOOTHING = True  # 是否使用平滑
+
+# TODO：更好的平滑处理
 
 class ViewTransformer():  # 定义视角（透视）变换器类
     def __init__(self, video_frames, device="cpu"):  # 构造函数：初始化参数与透视变换矩阵
@@ -32,7 +38,16 @@ class ViewTransformer():  # 定义视角（透视）变换器类
         for frame, keypoints, indices in self.keypoint_detector.detect_from_video(video_frames, stride=1):
             # 为每一帧计算透视变换矩阵
             matrix = self._calculate_homography(keypoints, indices)
-            self.perspective_transformers.append(matrix)
+
+            # 转换矩阵的平滑处理
+            M.append(matrix)
+            if USE_SMOOTHING:
+                if len(M) == MAXLEN:
+                    self.perspective_transformers.append(np.mean(M, axis=0))
+                else:
+                    self.perspective_transformers.append(None)
+            else:
+                self.perspective_transformers.append(matrix)
 
     def _calculate_homography(self, keypoints, indices):
         """
