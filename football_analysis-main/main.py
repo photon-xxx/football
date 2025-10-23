@@ -141,13 +141,7 @@ def main():
     player_assigner = PlayerBallAssigner()  # 初始化球员-球分配器
     team_ball_control = []  # 记录每一帧的球队控球权
     for frame_num, player_track in enumerate(tracks['players']):  # 遍历每一帧
-        # 检查该帧是否有球检测结果
-        if 1 in tracks['ball'][frame_num]:
-            ball_bbox = tracks['ball'][frame_num][1]['bbox']  # 获取该帧球的包围框
-        else:
-            # 如果没有检测到球，使用NaN作为默认值
-            ball_bbox = [np.nan, np.nan, np.nan, np.nan]
-        
+        ball_bbox = tracks['ball'][frame_num][1]['bbox']  # 获取该帧球的包围框
         assigned_player = player_assigner.assign_ball_to_player(player_track, ball_bbox)  # 判断哪位球员持球
 
         if assigned_player != -1:  # 如果找到了持球队员

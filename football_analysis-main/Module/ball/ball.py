@@ -45,41 +45,8 @@ def extract_ball_paths(tracks: Dict[str, Any]) -> List[np.ndarray]:
         return []
 
 def interpolate_ball_positions_transformed(ball_paths): 
-    """
-    对转换后球的位置进行插值，处理NaN值
-    
-    Args:
-        ball_paths: List[np.ndarray] - 球路径列表，每个路径为形状 (N, 2) 的 NumPy 数组
-    
-    Returns:
-        List[np.ndarray]: 插值后的球路径列表
-    """
-    import pandas as pd
-    import numpy as np
-    
-    if not ball_paths:
-        return ball_paths
-    
-    ball_paths_interpolated = []
-    
-    for path in ball_paths:
-        if len(path) == 0:
-            # 空路径直接返回
-            ball_paths_interpolated.append(path)
-            continue
-        
-        # 转换为DataFrame进行插值
-        df_path = pd.DataFrame(path, columns=['x', 'y'])
-        
-        # 插值补齐缺失值
-        df_path = df_path.interpolate(method='linear', limit_direction='both')
-        df_path = df_path.bfill()  # 向后填充剩余空值
-        df_path = df_path.ffill()  # 向前填充剩余空值
-        
-        # 转换回numpy数组
-        interpolated_path = df_path.to_numpy().astype(np.float32)
-        ball_paths_interpolated.append(interpolated_path)
-    
+    #处理将球位置置为NAN的帧
+
     return ball_paths_interpolated
 
 def replace_outliers_based_on_distance(
