@@ -155,19 +155,16 @@ class ViewTransformer():  # 定义视角（透视）变换器类
     def add_transformed_position_to_tracks(self, tracks):
         for object, object_tracks in tracks.items():
             for frame_num, track in enumerate(object_tracks):
-
-                # print("#########frame_num_test#########")
-                # print(frame_num if frame_num % 96 == 0 else "")
-                # print("#########frame_num_test#########")
-                # 测试
-
                 for track_id, track_info in track.items():
                     position = track_info['position_adjusted']
                     position = np.array(position)
                     
-                    # 使用对应帧的变换矩阵
-                    position_transformed = self.transform_point(position, frame_num)
-                    
+                    # 检查position是否为None或包含NaN
+                    if position is None or (isinstance(position, (list, np.ndarray)) and np.isnan(position).any()):
+                        position_transformed = [np.nan, np.nan]
+                    else:
+                        position_transformed = self.transform_point(position, frame_num)
+            
                     if position_transformed is not None:
                         position_transformed = position_transformed.squeeze().tolist()
                     tracks[object][frame_num][track_id]['position_transformed'] = position_transformed

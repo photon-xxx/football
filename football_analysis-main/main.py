@@ -10,7 +10,7 @@ from Module.visualizer import plot_team_ball_control ,plot_players_speed_distanc
 #from Module.test import TestRunner  # 导入测试运行器
 import supervision as sv
 from Storage.field_configs.soccer import SoccerPitchConfiguration
-from Module.ball import extract_ball_paths, replace_outliers_based_on_distance
+from Module.ball import extract_ball_paths, replace_outliers_based_on_distance , ball_filter, interpolate_ball_positions_transformed
 from Module.visualizer.pitch_annotation_tool import draw_pitch, draw_paths_on_pitch
 from test import test
 # =====================================================================================================================
@@ -43,7 +43,7 @@ FIGURES_SAVE_DIR = os.path.join(PROJECT_ROOT, 'IO', 'figures')
 DEVICE = "cuda"  # 可选: "cpu" 或 "cuda"
 
 # 缓存读取设置
-READ_FROM_STUB = True  # 是否从缓存文件读取结果
+READ_FROM_STUB = False  # 是否从缓存文件读取结果
 
 def main():
 #  ----------------------------------------------------------------------------------------------------------------------#
@@ -79,19 +79,36 @@ def main():
 
 # ----------------------------------------------------------------------------------------------------------------------#
 
-    # Interpolate Ball Positions
-    tracks["ball"] = tracker.interpolate_ball_positions(tracks["ball"])  # 对球的轨迹插值，补齐丢失的帧位置
+    print("#########tracks_test#########")
+    print(tracks["ball"][:10])
+    print("#########tracks_test#########")
 
-
+    # TODO：除去异常值 
+    # 提取球路径
     ball_paths = extract_ball_paths(tracks)
 
+    # Interpolate Ball Positions
+    # tracks["ball"] = tracker.interpolate_ball_positions(tracks["ball"])  # 对球的轨迹插值，补齐丢失的帧位置
+    # TODO 转换后的坐标进行插值
+    ball_paths_interpolated = interpolate_ball_positions_transformed(ball_paths)
+
+    print("#########tracks_test_after_interpolate#########")
+    print(ball_paths_interpolated[:10])
+    print("#########tracks_test_after_interpolate#########")
+
+    # 滤波处理
+    ball_paths_filtered = ball_filter(ball_paths_interpolated)
     # ball_paths = replace_outliers_based_on_distance(ball_paths)
+
+    print("#########ball_paths_before_filter_test#########")
+    print(ball_paths_filtered[:10])
+    print("#########ball_paths_before_filter_test#########")
 
     BALL_on_PITCH = draw_pitch(PITCH_CONFIG)
 
     BALL_on_PITCH = draw_paths_on_pitch(
         config=PITCH_CONFIG,
-        paths=ball_paths,
+        paths=ball_paths_filtered,
         color=sv.Color.WHITE,
         pitch=BALL_on_PITCH)
 
@@ -124,7 +141,13 @@ def main():
     player_assigner = PlayerBallAssigner()  # 初始化球员-球分配器
     team_ball_control = []  # 记录每一帧的球队控球权
     for frame_num, player_track in enumerate(tracks['players']):  # 遍历每一帧
-        ball_bbox = tracks['ball'][frame_num][1]['bbox']  # 获取该帧球的包围框
+        # 检查该帧是否有球检测结果
+        if 1 in tracks['ball'][frame_num]:
+            ball_bbox = tracks['ball'][frame_num][1]['bbox']  # 获取该帧球的包围框
+        else:
+            # 如果没有检测到球，使用NaN作为默认值
+            ball_bbox = [np.nan, np.nan, np.nan, np.nan]
+        
         assigned_player = player_assigner.assign_ball_to_player(player_track, ball_bbox)  # 判断哪位球员持球
 
         if assigned_player != -1:  # 如果找到了持球队员

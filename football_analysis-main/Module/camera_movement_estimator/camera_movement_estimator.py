@@ -34,8 +34,14 @@ class CameraMovementEstimator():
             for frame_num, track in enumerate(object_tracks):
                 for track_id, track_info in track.items():
                     position = track_info['position']
-                    camera_movement = camera_movement_per_frame[frame_num]
-                    position_adjusted = (position[0]-camera_movement[0],position[1]-camera_movement[1])
+                    
+                    # 检查position是否为None或包含NaN
+                    if position is None or (isinstance(position, (list, np.ndarray)) and np.isnan(position).any()):
+                        position_adjusted = [np.nan, np.nan]  # 或 [np.nan, np.nan]
+                    else:
+                        camera_movement = camera_movement_per_frame[frame_num]
+                        position_adjusted = (position[0]-camera_movement[0], position[1]-camera_movement[1])
+                    
                     tracks[object][frame_num][track_id]['position_adjusted'] = position_adjusted
                     
 

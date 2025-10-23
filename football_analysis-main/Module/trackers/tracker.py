@@ -24,10 +24,16 @@ class Tracker:  # 定义跟踪器类
             for frame_num, track in enumerate(object_tracks):  # 遍历每一帧
                 for track_id, track_info in track.items():  # 遍历该帧中的每个对象
                     bbox = track_info['bbox']  # 获取目标的边界框
-                    if object == 'ball':
-                        position = get_center_of_bbox(bbox)  # 球用 bbox 中心
+                
+                    # 检查bbox是否包含NaN
+                    if np.isnan(bbox).any():
+                        position = (np.nan, np.nan)
                     else:
-                        position = get_foot_position(bbox)  # 球员/裁判用脚下点
+                        if object == 'ball':
+                            position = get_center_of_bbox(bbox)
+                        else:
+                            position = get_foot_position(bbox)
+    
                     tracks[object][frame_num][track_id]['position'] = position  # 写入位置
 
     def interpolate_ball_positions(self, ball_positions): 
@@ -108,7 +114,10 @@ class Tracker:  # 定义跟踪器类
             # 存储球（不追踪，使用扩展后的边界框）
             for frame_detection in ball_detections:
                 bbox = frame_detection[0].tolist()
-                tracks["ball"][frame_num][1] = {"bbox": bbox}  # 存球，默认 ID=1
+                if len(ball_detections) > 0:
+                    tracks["ball"][frame_num][1] = {"bbox": bbox}
+                else:
+                    tracks["ball"][frame_num][1] = {"bbox": [np.nan, np.nan, np.nan, np.nan]}  # NaN数组
 
         if stub_path is not None:  # 可选缓存保存
             with open(stub_path, 'wb') as f:

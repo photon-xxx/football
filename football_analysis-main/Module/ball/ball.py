@@ -3,6 +3,7 @@
 # #######################################
 import numpy as np
 from typing import Dict, List, Any, Union
+from scipy.signal import savgol_filter
 
 def extract_ball_paths(tracks: Dict[str, Any]) -> List[np.ndarray]:
     """
@@ -20,28 +21,66 @@ def extract_ball_paths(tracks: Dict[str, Any]) -> List[np.ndarray]:
     # 遍历每一帧的球数据
     for frame_data in tracks.get("ball", []):
         for _, ball_info in frame_data.items():
-            # print("#########ball_info_test#########")
-            # print(ball_info)
-            # print("#########ball_info_test#########")
             if "position_transformed" in ball_info:
-
-                #测试
-                # print("#########ball_info_test#########")
-                # print(ball_info["position_transformed"])
-                # print("#########ball_info_test#########")
-
-                ball_path.append(ball_info["position_transformed"])
+                pos = ball_info["position_transformed"]
+                
+                # 检查位置数据是否有效
+                if pos is not None and not (isinstance(pos, (list, np.ndarray)) and np.isnan(pos).any()):
+                    ball_path.append(pos)
+                else:
+                    # 对于无效数据，可以选择跳过或使用NaN
+                    ball_path.append([np.nan, np.nan])
 
     # 转换为 numpy 数组，并包装为列表（以兼容 draw_paths_on_pitch）
-    #测试
-    # print("#########ball_path_test#########")
-    # print(ball_path)
-    # print("#########ball_path_test#########")
-
     if ball_path:
-        return [np.array(ball_path, dtype=np.float32)]
+        try:
+            # 尝试转换为numpy数组
+            path_array = np.array(ball_path, dtype=np.float32)
+            return [path_array]
+        except ValueError as e:
+            print(f"extract_ball_paths转换失败: {e}")
+            # 如果转换失败，返回空列表
+            return []
     else:
         return []
+
+def interpolate_ball_positions_transformed(ball_paths): 
+    """
+    对转换后球的位置进行插值，处理NaN值
+    
+    Args:
+        ball_paths: List[np.ndarray] - 球路径列表，每个路径为形状 (N, 2) 的 NumPy 数组
+    
+    Returns:
+        List[np.ndarray]: 插值后的球路径列表
+    """
+    import pandas as pd
+    import numpy as np
+    
+    if not ball_paths:
+        return ball_paths
+    
+    ball_paths_interpolated = []
+    
+    for path in ball_paths:
+        if len(path) == 0:
+            # 空路径直接返回
+            ball_paths_interpolated.append(path)
+            continue
+        
+        # 转换为DataFrame进行插值
+        df_path = pd.DataFrame(path, columns=['x', 'y'])
+        
+        # 插值补齐缺失值
+        df_path = df_path.interpolate(method='linear', limit_direction='both')
+        df_path = df_path.bfill()  # 向后填充剩余空值
+        df_path = df_path.ffill()  # 向前填充剩余空值
+        
+        # 转换回numpy数组
+        interpolated_path = df_path.to_numpy().astype(np.float32)
+        ball_paths_interpolated.append(interpolated_path)
+    
+    return ball_paths_interpolated
 
 def replace_outliers_based_on_distance(
     positions: List[np.ndarray],
@@ -114,7 +153,60 @@ def replace_outliers_based_on_distance(
     else:
         return []
 
-    #TODO:　空数组插值
+def ball_filter(trajectory, window_length=5, polyorder=2):
+    """
+    Savitzky-Golay滤波
+    
+    Args:
+        trajectory: 可以是单个np.ndarray或List[np.ndarray]
+        window_length: 滤波窗口长度
+        polyorder: 多项式阶数
+    
+    Returns:
+        滤波后的轨迹，格式与输入相同
+    """
+    from scipy.signal import savgol_filter
+    
+    # 如果输入是列表，处理每个路径
+    if isinstance(trajectory, list):
+        filtered_paths = []
+        for path in trajectory:
+            if len(path) == 0:
+                # 空路径直接返回
+                filtered_paths.append(path)
+            elif len(path) < window_length:
+                # 路径太短，直接返回
+                filtered_paths.append(path)
+            else:
+                # 应用Savitzky-Golay滤波
+                try:
+                    x_filtered = savgol_filter(path[:, 0], window_length, polyorder)
+                    y_filtered = savgol_filter(path[:, 1], window_length, polyorder)
+                    filtered_path = np.column_stack([x_filtered, y_filtered])
+                    filtered_paths.append(filtered_path)
+                except Exception as e:
+                    print(f"滤波失败: {e}")
+                    filtered_paths.append(path)  # 失败时返回原路径
+        
+        return filtered_paths
+    
+    # 如果输入是单个numpy数组
+    elif isinstance(trajectory, np.ndarray):
+        if len(trajectory) == 0:
+            return trajectory
+        elif len(trajectory) < window_length:
+            return trajectory
+        else:
+            try:
+                x_filtered = savgol_filter(trajectory[:, 0], window_length, polyorder)
+                y_filtered = savgol_filter(trajectory[:, 1], window_length, polyorder)
+                return np.column_stack([x_filtered, y_filtered])
+            except Exception as e:
+                print(f"滤波失败: {e}")
+                return trajectory
+    
+    else:
+        raise ValueError(f"不支持的输入类型: {type(trajectory)}")
 
 
 # function TODO：5hz采样    
