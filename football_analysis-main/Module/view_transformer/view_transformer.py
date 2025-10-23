@@ -249,6 +249,17 @@ if __name__ == "__main__":
         print("测试 transform_point 方法")
         print("=" * 60)
         
+        # 寻找第一个有效的变换矩阵
+        first_valid_frame = None
+        for frame_idx, matrix in enumerate(view_transformer.perspective_transformers):
+            if matrix is not None:
+                first_valid_frame = frame_idx
+                print(f"找到第一个有效变换矩阵在帧 {frame_idx + 1}")
+                break
+        
+        if first_valid_frame is None:
+            print("✗ 未找到任何有效的变换矩阵")
+        
         # 测试几个示例点
         test_points = [
             [500, 100],   # 左上角区域
@@ -259,27 +270,18 @@ if __name__ == "__main__":
         
         print("测试点变换: ->x   ↓ y")
         for i, point in enumerate(test_points):
-            # 使用第一帧的变换矩阵进行测试
-            if len(view_transformer.perspective_transformers) > 0:
-                # 临时设置透视变换矩阵
-                view_transformer.perspective_transformer = view_transformer.perspective_transformers[0]
-                
-                if view_transformer.perspective_transformer is not None:
-                    transformed = view_transformer.transform_point(point)
-                    if transformed is not None:
-                        print(f"  测试点 {i+1}: {point} -> {transformed}")
-                    else:
-                        print(f"  测试点 {i+1}: {point} -> 变换失败")
-                else:
-                    print(f"  测试点 {i+1}: {point} -> 矩阵为None")
+            # 使用第一个有效帧的变换矩阵进行测试
+            transformed = view_transformer.transform_point(point, first_valid_frame)
+            if transformed is not None:
+                print(f"  测试点 {i+1}: {point} -> {transformed}")
             else:
-                print(f"  测试点 {i+1}: {point} -> 无可用变换矩阵")
+                print(f"  测试点 {i+1}: {point} -> 变换失败")
         
         print("\ntransform_point 测试完成")
         
-        # 获取第一帧并标注测试点
+        # 获取第一个有效帧并标注测试点
         print("\n" + "=" * 60)
-        print("标注测试点到第一帧并保存")
+        print(f"标注测试点到第 {first_valid_frame + 1} 帧并保存")
         print("=" * 60)
         
         # 创建test目录
@@ -288,14 +290,25 @@ if __name__ == "__main__":
         if not os.path.exists(test_dir):
             os.makedirs(test_dir)
         
-        # 获取第一帧
+        # 获取第一个有效帧
         cap = cv2.VideoCapture(args.video)
-        ret, first_frame = cap.read()
+        target_frame = None
+        frame_count = 0
+        
+        while True:
+            ret, frame = cap.read()
+            if not ret:
+                break
+            if frame_count == first_valid_frame:
+                target_frame = frame
+                break
+            frame_count += 1
+        
         cap.release()
         
-        if ret:
+        if target_frame is not None:
             # 在帧上标注测试点
-            annotated_frame = first_frame.copy()
+            annotated_frame = target_frame.copy()
             
             # 定义颜色
             colors = [
@@ -332,7 +345,7 @@ if __name__ == "__main__":
             for i, point in enumerate(test_points):
                 print(f"  P{i+1}: {point} (颜色: {colors[i % len(colors)]})")
         else:
-            print("✗ 无法读取第一帧")
+            print(f"✗ 无法读取第 {first_valid_frame + 1} 帧")
         
         print("\n测试点标注完成")
         

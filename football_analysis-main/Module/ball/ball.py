@@ -87,12 +87,11 @@ def replace_outliers_based_on_distance(
 
                 if distance > distance_threshold:
                     
-                    if positions_count > 200 and positions_count < 300:
-                        print("position_count:", positions_count)
-                        print("position:", position) 
-                        print("last_valid_position:", last_valid_position) 
-                        print("distance:", distance)
-                        print("########################################################") 
+                    print("position_count:", positions_count)
+                    print("position:", position) 
+                    print("last_valid_position:", last_valid_position) 
+                    print("distance:", distance)
+                    print("########################################################") 
 
                     # 若距离过大（跳跃异常），置为空
                     cleaned_positions.append(np.array([], dtype=np.float64))
@@ -116,3 +115,6 @@ def replace_outliers_based_on_distance(
         return []
 
     #TODO:　空数组插值
+
+
+# function TODO：5hz采样    

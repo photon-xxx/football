@@ -212,8 +212,10 @@ if __name__ == "__main__":
     print(f"开始处理视频: {args.video}")
     print(f"输出视频将保存到: {output_video_path}")
 
+    
+
     try:
-        for frame, keypoints, indices in detector.detect_from_video(args.video, stride=1):
+        for frame, keypoints, indices in detector.detect_from_video(args.video, stride=1):  # TODO： 修改为读取视频帧
             annotated = detector.visualize_keypoints(frame, keypoints, indices)
             
             # 初始化视频写入器（使用第一帧的尺寸）
