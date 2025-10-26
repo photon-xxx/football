@@ -175,8 +175,8 @@ if __name__ == "__main__":
     import argparse
     
     parser = argparse.ArgumentParser(description="ViewTransformer 测试")
-    parser.add_argument("--video", type=str, default="E:\Soccer\\football\\football_analysis-main\IO\input_videos\\test.mp4", help="输入视频路径")
-    parser.add_argument("--device", type=str, default="cpu", help="运行设备: cpu/cuda")
+    parser.add_argument("--video", type=str, default="E:\Soccer\\football\\football_analysis-main\IO\input_videos\\test_pugongying_6s.mp4", help="输入视频路径")
+    parser.add_argument("--device", type=str, default="cuda", help="运行设备: cpu/cuda")
     args = parser.parse_args()
     
     print("=" * 60)

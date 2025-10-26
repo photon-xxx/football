@@ -22,7 +22,7 @@ import os
 PROJECT_ROOT = os.path.dirname(os.path.abspath(__file__))
 
 # 输入视频路径
-INPUT_VIDEO_PATH = os.path.join(PROJECT_ROOT, 'IO', 'input_videos', 'test.mp4')
+INPUT_VIDEO_PATH = os.path.join(PROJECT_ROOT, 'IO', 'input_videos', 'test_pugongying_25s.mp4')
 
 # 模型路径
 YOLO_MODEL_PATH = os.path.join(PROJECT_ROOT, 'Storage', 'models', 'yolo', 'best.pt')
@@ -83,13 +83,14 @@ def main():
     print(tracks["ball"][:10])
     print("#########tracks_test#########")
 
-    # TODO：除去异常值 
     # 提取球路径
     ball_paths = extract_ball_paths(tracks)
 
+    # TODO：除去异常值 
+    ball_paths = replace_outliers_based_on_distance(ball_paths)
+    
     # Interpolate Ball Positions
-    # tracks["ball"] = tracker.interpolate_ball_positions(tracks["ball"])  # 对球的轨迹插值，补齐丢失的帧位置
-    # TODO 转换后的坐标进行插值
+    # 转换后的坐标进行插值
     ball_paths_interpolated = interpolate_ball_positions_transformed(ball_paths)
 
     print("#########tracks_test_after_interpolate#########")

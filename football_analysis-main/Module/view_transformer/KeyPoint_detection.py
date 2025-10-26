@@ -4,7 +4,7 @@ import supervision as sv
 import numpy as np
 from ultralytics import YOLO
 from collections import deque
-
+from Module.utils import read_video
 # 绝对导入
 from Storage.field_configs.soccer import SoccerPitchConfiguration
 
@@ -93,7 +93,7 @@ class KeyPointDetector:
         else:
             raise ValueError(f"Unsupported smoothing method: {method}")
 
-    def detect_from_video(self, video_frames, stride: int = 1, conf_threshold: float = 0.6, smoothing: str = "moving"):  # 平滑可选
+    def detect_from_video(self, video_frames, stride: int = 1, conf_threshold: float = 0.5, smoothing: str = "moving"):  # 平滑可选
         """
         在视频帧中逐帧检测关键点 (生成器)
 
@@ -101,7 +101,7 @@ class KeyPointDetector:
             video_frames: 输入视频帧列表
             stride (int): 帧间隔，默认每帧都检测
             conf_threshold (float): 关键点置信度阈值，低于该值的点会被过滤,置为NaN
-                                   // 置信度取得较高，矩阵的计算只需要最少四个点就够
+                                   // 默认0.5，只保留高置信度的关键点，矩阵的计算只需要最少四个点就够
             smoothing (str): 平滑方法 ["none", "moving", "ema"]
 
         Yields:
@@ -182,71 +182,87 @@ class KeyPointDetector:
 
 
 # -------------------- 测试入口 --------------------
+# TODO:整合测试
 if __name__ == "__main__":
     import argparse
     import os
     from pathlib import Path
 
-    parser = argparse.ArgumentParser(description="KeyPoint Detection for Football Pitch")
-    parser.add_argument("--video", type=str, required=True, help="输入视频路径")
-    parser.add_argument("--device", type=str, default="cpu", help="运行设备: cpu/cuda")
-    parser.add_argument("--save_video", action="store_true", help="是否保存测试结果视频")
-    parser.add_argument("--output_dir", type=str, default="IO/output_videos/test", help="输出视频目录")
-    args = parser.parse_args()
-
-    detector = KeyPointDetector(device=args.device)
-
-    # 创建输出目录
-    output_dir = Path(args.output_dir)
-    output_dir.mkdir(parents=True, exist_ok=True)
-
-    # 获取输入视频文件名（不含扩展名）
-    input_video_path = Path(args.video)
-    video_name = input_video_path.stem
-    output_video_path = output_dir / f"{video_name}_test.mp4"
-
-    # 初始化视频写入器
-    video_writer = None
-    frame_count = 0
-
-    print(f"开始处理视频: {args.video}")
-    print(f"输出视频将保存到: {output_video_path}")
-
+    video_path = "E:\Soccer\\football\\football_analysis-main\IO\input_videos\\test_pugongying_6s.mp4"
+    video_frames = read_video(video_path)
+    detector = KeyPointDetector(device="cuda")
     
-
-    try:
-        for frame, keypoints, indices in detector.detect_from_video(args.video, stride=1):  # TODO： 修改为读取视频帧
+    # 使用置信度阈值0.8进行检测，检测第100帧
+    target_frame = 100
+    for frame_idx, (frame, keypoints, indices) in enumerate(detector.detect_from_video(video_frames, conf_threshold=0.8)):
+        if frame_idx == target_frame:  # 检测第100帧
+            # 使用实际检测到的第100帧进行标注
             annotated = detector.visualize_keypoints(frame, keypoints, indices)
+            cv2.imshow(f"KeyPoints Frame {target_frame} (Confidence > 0.8)", annotated)
+            cv2.waitKey(0)
+            cv2.destroyAllWindows()
+            break
+
+    # parser = argparse.ArgumentParser(description="KeyPoint Detection for Football Pitch")
+    # parser.add_argument("--video", type=str, default= "E:\Soccer\\football\\football_analysis-main\IO\input_videos\\test_pugongying_6s.mp4", required=True, help="输入视频路径")
+    # parser.add_argument("--device", type=str, default="cuda", help="运行设备: cpu/cuda")
+    # parser.add_argument("--save_video", action="store_true", help="是否保存测试结果视频")
+    # parser.add_argument("--output_dir", type=str, default="IO/output_videos/test", help="输出视频目录")
+    # args = parser.parse_args()
+
+    # detector = KeyPointDetector(device=args.device)
+
+    # # 创建输出目录
+    # output_dir = Path(args.output_dir)
+    # output_dir.mkdir(parents=True, exist_ok=True)
+
+    # # 获取输入视频文件名（不含扩展名）
+    # input_video_path = Path(args.video)
+    # video_name = input_video_path.stem
+    # output_video_path = output_dir / f"{video_name}_test.mp4"
+
+    # # 初始化视频写入器
+    # video_writer = None
+    # frame_count = 0
+
+    # print(f"开始处理视频: {args.video}")
+    # print(f"输出视频将保存到: {output_video_path}")
+
+    # video_frames = read_video(args.video)
+
+    # try:
+    #     for frame, keypoints, indices in detector.detect_from_video(video_frames, stride=1):  # TODO： 修改为读取视频帧
+    #         annotated = detector.visualize_keypoints(frame, keypoints, indices)
             
-            # 初始化视频写入器（使用第一帧的尺寸）
-            if video_writer is None and args.save_video:
-                height, width = annotated.shape[:2]
-                fourcc = cv2.VideoWriter_fourcc(*'mp4v')
-                video_writer = cv2.VideoWriter(str(output_video_path), fourcc, 24.0, (width, height))
-                print(f"视频写入器已初始化: {width}x{height}")
+    #         # 初始化视频写入器（使用第一帧的尺寸）
+    #         if video_writer is None and args.save_video:
+    #             height, width = annotated.shape[:2]
+    #             fourcc = cv2.VideoWriter_fourcc(*'mp4v')
+    #             video_writer = cv2.VideoWriter(str(output_video_path), fourcc, 24.0, (width, height))
+    #             print(f"视频写入器已初始化: {width}x{height}")
             
-            # 保存帧到视频文件
-            if video_writer is not None:
-                video_writer.write(annotated)
-                frame_count += 1
-                if frame_count % 100 == 0:
-                    print(f"已处理 {frame_count} 帧")
+    #         # 保存帧到视频文件
+    #         if video_writer is not None:
+    #             video_writer.write(annotated)
+    #             frame_count += 1
+    #             if frame_count % 100 == 0:
+    #                 print(f"已处理 {frame_count} 帧")
             
-            # 显示实时预览
-            cv2.imshow("KeyPoints", annotated)
-            if cv2.waitKey(1) & 0xFF == ord("q"):
-                break
+    #         # 显示实时预览
+    #         cv2.imshow("KeyPoints", annotated)
+    #         if cv2.waitKey(1) & 0xFF == ord("q"):
+    #             break
                 
-    except KeyboardInterrupt:
-        print("\n用户中断处理")
-    except Exception as e:
-        print(f"处理过程中出现错误: {e}")
-    finally:
-        # 清理资源
-        if video_writer is not None:
-            video_writer.release()
-            print(f"视频已保存到: {output_video_path}")
-            print(f"总共处理了 {frame_count} 帧")
+    # except KeyboardInterrupt:
+    #     print("\n用户中断处理")
+    # except Exception as e:
+    #     print(f"处理过程中出现错误: {e}")
+    # finally:
+    #     # 清理资源
+    #     if video_writer is not None:
+    #         video_writer.release()
+    #         print(f"视频已保存到: {output_video_path}")
+    #         print(f"总共处理了 {frame_count} 帧")
         
-        cv2.destroyAllWindows()
-        print("处理完成")
+    #     cv2.destroyAllWindows()
+    #     print("处理完成")

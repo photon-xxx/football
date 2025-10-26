@@ -45,80 +45,124 @@ def extract_ball_paths(tracks: Dict[str, Any]) -> List[np.ndarray]:
         return []
 
 def interpolate_ball_positions_transformed(ball_paths): 
-    #处理将球位置置为NAN的帧
-
+    """
+    对球路径中的NaN值进行线性插值处理
+    
+    Args:
+        ball_paths: 球路径列表，可能包含NaN值
+        
+    Returns:
+        插值后的球路径列表，NaN值被替换为插值结果
+    """
+    from scipy.interpolate import interp1d
+    
+    ball_paths_interpolated = []
+    
+    for path in ball_paths:
+        if len(path) == 0:
+            ball_paths_interpolated.append(path)
+            continue
+            
+        # 创建路径副本
+        interpolated_path = path.copy().astype(np.float64)
+        
+        # 检查是否包含NaN值
+        if not np.isnan(interpolated_path).any():
+            # 没有NaN值，直接返回
+            ball_paths_interpolated.append(interpolated_path)
+            continue
+        
+        # 分离x和y坐标
+        x_coords = interpolated_path[:, 0]
+        y_coords = interpolated_path[:, 1]
+        
+        # 找到有效点的索引
+        valid_x_mask = ~np.isnan(x_coords)
+        valid_y_mask = ~np.isnan(y_coords)
+        
+        # 如果x坐标有有效值，进行插值
+        if np.any(valid_x_mask):
+            valid_x_indices = np.where(valid_x_mask)[0]
+            if len(valid_x_indices) > 1:  # 需要至少2个点才能插值
+                try:
+                    # 对x坐标进行线性插值
+                    f_x = interp1d(valid_x_indices, x_coords[valid_x_indices], 
+                                 kind='linear', bounds_error=False, fill_value='extrapolate')
+                    x_coords = f_x(np.arange(len(x_coords)))
+                except Exception as e:
+                    print(f"X坐标插值失败: {e}")
+        
+        # 如果y坐标有有效值，进行插值
+        if np.any(valid_y_mask):
+            valid_y_indices = np.where(valid_y_mask)[0]
+            if len(valid_y_indices) > 1:  # 需要至少2个点才能插值
+                try:
+                    # 对y坐标进行线性插值
+                    f_y = interp1d(valid_y_indices, y_coords[valid_y_indices], 
+                                 kind='linear', bounds_error=False, fill_value='extrapolate')
+                    y_coords = f_y(np.arange(len(y_coords)))
+                except Exception as e:
+                    print(f"Y坐标插值失败: {e}")
+        
+        # 重新组合坐标
+        interpolated_path[:, 0] = x_coords
+        interpolated_path[:, 1] = y_coords
+        
+        ball_paths_interpolated.append(interpolated_path)
+    
     return ball_paths_interpolated
 
 def replace_outliers_based_on_distance(
-    positions: List[np.ndarray],
-    distance_threshold: float =500.0
+    ball_paths: List[np.ndarray],
+    distance_threshold: float =200.0   # 需要根据实际情况调整阈值
 ) -> List[np.ndarray]:
     """
     根据与上一个有效点的距离，剔除异常点。
     若当前点与上个点距离超过阈值，则认为该点异常，用空数组替代。
+    
+    Args:
+        ball_paths: 球路径列表，每个路径为形状 (N, 2) 的 NumPy 数组
+        distance_threshold: 距离阈值，超过此距离的点将被视为异常点
+        
+    Returns:
+        处理后的球路径列表，异常点被替换为 [np.nan, np.nan]
     """
-
-    last_valid_position: Union[np.ndarray, None] = None  # 上一个有效位置
-    cleaned_positions: List[np.ndarray] = []             # 清洗后的坐标列表
-
-    print("#########positions_test#########")
-    print("positions type:", type(positions))
-    print("positions[0] type:", type(positions[0]))
-    print("positions[0] shape:", positions[0].shape if hasattr(positions[0], 'shape') else 'no shape')
-    print("#########positions_test#########")
-
-    positions_count = 0
-    for position in positions[0]:
-        positions_count += 1
-        if len(position) == 0:
-            # 若当前帧没有检测到球，则直接保留空数组
-            cleaned_positions.append(position)
-
-            print("########当前帧没有检测到球##########")
-        else:
-            if last_valid_position is None:
-                # 第一个有效位置直接保留
-                print("#########第一个有效位置直接保留##########")
-                cleaned_positions.append(position)
-                last_valid_position = position
-            else:
-                # 计算与上一个有效点的距离
-                distance = np.linalg.norm(position - last_valid_position)
-
-                # print("#########distance_test#########")
-                # print("position:", position)
-                # print("last_valid_position:", last_valid_position)
-                # print("distance calculation:", np.linalg.norm(position - last_valid_position))
-                # print("#########distance_test#########")
-
-                if distance > distance_threshold:
-                    
-                    print("position_count:", positions_count)
-                    print("position:", position) 
-                    print("last_valid_position:", last_valid_position) 
-                    print("distance:", distance)
-                    print("########################################################") 
-
-                    # 若距离过大（跳跃异常），置为空
-                    cleaned_positions.append(np.array([], dtype=np.float64))
-                else:
-                    # 否则认为是正常点，保留并更新last_valid_position
-                    cleaned_positions.append(position)
-                    last_valid_position = position
-
-    # print("#########positions_count_test#########")
-    # print(positions_count)
-    # print("#########positions_count_test#########")
-    # 修改返回部分
-    if cleaned_positions:
-        # 过滤掉空数组，只保留有效坐标
-        valid_positions = [pos for pos in cleaned_positions if len(pos) > 0]
-        if valid_positions:
-            return [np.array(valid_positions, dtype=np.float32)]
-        else:
-            return []
-    else:
-        return []
+    ball_paths_processed = []
+    
+    for path in ball_paths:
+        if len(path) == 0:
+            ball_paths_processed.append(path)
+            continue
+            
+        # 创建路径副本以避免修改原始数据，确保数据类型为float
+        processed_path = path.copy().astype(np.float64)
+        
+        # 遍历轨迹中的坐标（从第二个点开始，到倒数第二个点结束）
+        for i in range(1, len(processed_path) - 1):
+            current_point = processed_path[i]
+            prev_point = processed_path[i-1]
+            next_point = processed_path[i+1]
+            
+            # 跳过已经是NaN的点
+            if np.isnan(current_point).any() or np.isnan(prev_point).any() or np.isnan(next_point).any():
+                continue
+            
+            # 计算当前点与前一个点、后一个点之间的距离
+            dist_to_prev = np.linalg.norm(current_point - prev_point)
+            dist_to_next = np.linalg.norm(current_point - next_point)
+            dist_prev_to_next = np.linalg.norm(next_point - prev_point)
+            
+            # 如果当前点与前一个点、后一个点之间的距离都超过阈值，
+            # 且前一个点和后一个点之间的距离小于阈值，则认为该点异常
+            if (dist_to_prev > distance_threshold and 
+                dist_to_next > distance_threshold and 
+                dist_prev_to_next < distance_threshold):
+                # 用[np.nan,np.nan]替代异常点
+                processed_path[i] = [np.nan, np.nan]
+        
+        ball_paths_processed.append(processed_path)
+    
+    return ball_paths_processed
 
 def ball_filter(trajectory, window_length=5, polyorder=2):
     """
