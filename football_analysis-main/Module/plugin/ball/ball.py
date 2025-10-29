@@ -175,9 +175,7 @@ def ball_filter(trajectory, window_length=5, polyorder=2):
     
     Returns:
         滤波后的轨迹，格式与输入相同
-    """
-    from scipy.signal import savgol_filter
-    
+    """  
     # 如果输入是列表，处理每个路径
     if isinstance(trajectory, list):
         filtered_paths = []
@@ -219,5 +217,55 @@ def ball_filter(trajectory, window_length=5, polyorder=2):
     else:
         raise ValueError(f"不支持的输入类型: {type(trajectory)}")
 
+def calculate_ball_instant_speed(ball_paths, frame_rate=25.0):
+    """
+    计算球轨迹的瞬时速度
+    
+    Args:
+        ball_paths: 滤波后的球轨迹列表，每个路径为形状 (N, 2) 的 NumPy 数组
+        frame_rate: 视频帧率，默认25fps
+    
+    Returns:
+        List[np.ndarray]: 瞬时速度列表，每个速度数组形状为 (N, 1)
+    """
+    ball_instant_speeds = []
+    dt = 1.0 / frame_rate  # 时间间隔（秒）
+    
+    for path in ball_paths:
+        if len(path) == 0:
+            # 空路径，返回空的速度数组
+            ball_instant_speeds.append(np.array([]).reshape(0, 1))
+            continue
+        elif len(path) == 1:
+            # 只有一个点，无法计算速度，返回0
+            ball_instant_speeds.append(np.array([[0.0]]))
+            continue
+        
+        # 初始化速度数组
+        velocities = np.zeros((len(path), 1))
+        
+        # 第一个点：使用前向差分
+        if len(path) > 1:
+            # 检查是否包含NaN值
+            if not (np.isnan(path[0]).any() or np.isnan(path[1]).any()):
+                velocity = np.linalg.norm(path[1] - path[0]) / dt
+                velocities[0, 0] = velocity
+        
+        # 中间点：使用中心差分（更准确）
+        for i in range(1, len(path) - 1):
+            # 检查相邻点是否包含NaN值
+            if not (np.isnan(path[i-1]).any() or np.isnan(path[i+1]).any()):
+                velocity = np.linalg.norm(path[i+1] - path[i-1]) / (2 * dt)
+                velocities[i, 0] = velocity
+        
+        # 最后一个点：使用后向差分
+        if len(path) > 1:
+            if not (np.isnan(path[-1]).any() or np.isnan(path[-2]).any()):
+                velocity = np.linalg.norm(path[-1] - path[-2]) / dt
+                velocities[-1, 0] = velocity
+        
+        ball_instant_speeds.append(velocities)
+    
+    return ball_instant_speeds    
 
-# function TODO：5hz采样    
+# function TODO：5hz采样

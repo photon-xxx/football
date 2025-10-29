@@ -4,13 +4,13 @@ import supervision as sv
 import numpy as np
 from ultralytics import YOLO
 from collections import deque
-from Module.utils import read_video
+from Module.common.utils import read_video
 # 绝对导入
 from Storage.field_configs.soccer import SoccerPitchConfiguration
 
 # 模型路径
 PARENT_DIR = os.path.dirname(os.path.abspath(__file__))
-PITCH_DETECTION_MODEL_PATH = "E:/Soccer/football/football_analysis-main/Storage/models/KeyPoint_detection/football-pitch-detection.pt"
+PITCH_DETECTION_MODEL_PATH = "/Storage/models/KeyPoint_detection/football-pitch-detection.pt"
 # 全局配置
 CONFIG = SoccerPitchConfiguration()
 
@@ -49,7 +49,7 @@ class KeyPointDetector:
         Returns:
             sv.KeyPoints: 检测到的关键点
         """
-        result = self.model(frame, verbose=False)[0]
+        result = self.model(frame, verbose=False, conf=0.7)[0]
         keypoints = sv.KeyPoints.from_ultralytics(result)
 
         # 调试
@@ -184,11 +184,9 @@ class KeyPointDetector:
 # -------------------- 测试入口 --------------------
 # TODO:整合测试
 if __name__ == "__main__":
-    import argparse
     import os
-    from pathlib import Path
 
-    video_path = "E:\Soccer\\football\\football_analysis-main\IO\input_videos\\test_pugongying_6s.mp4"
+    video_path = "/IO/input_videos/test_pugongying_6s.mp4"
     video_frames = read_video(video_path)
     detector = KeyPointDetector(device="cuda")
     

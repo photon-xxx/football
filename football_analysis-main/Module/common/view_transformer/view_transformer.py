@@ -1,5 +1,4 @@
 import numpy as np  # 导入 numpy，处理数组与数值运算
-import cv2  # 导入 OpenCV，用于图像处理与透视变换
 import sys
 import os
 from collections import deque           # 用于保存最近若干帧的变换矩阵（实现平滑）
@@ -12,7 +11,7 @@ try:
     from .KeyPoint_detection import KeyPointDetector
 except ImportError:
     # 如果相对导入失败，使用绝对导入
-    from Module.view_transformer.KeyPoint_detection import KeyPointDetector
+    from Module.common.view_transformer.KeyPoint_detection import KeyPointDetector
 
 
 MAXLEN = 5  # 存储最近10帧的透视变换矩阵（用于平滑）
@@ -156,7 +155,7 @@ class ViewTransformer():  # 定义视角（透视）变换器类
         for object, object_tracks in tracks.items():
             for frame_num, track in enumerate(object_tracks):
                 for track_id, track_info in track.items():
-                    position = track_info['position_adjusted']
+                    position = track_info['position']   #去除了相机转动补偿
                     position = np.array(position)
                     
                     # 检查position是否为None或包含NaN
@@ -283,7 +282,7 @@ if __name__ == "__main__":
         
         # 创建test目录
         import os
-        test_dir = "E:\Soccer\\football\\football_analysis-main\IO\output_videos"
+        test_dir = "/IO/output_videos"
         if not os.path.exists(test_dir):
             os.makedirs(test_dir)
         

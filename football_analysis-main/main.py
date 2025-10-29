@@ -1,16 +1,16 @@
-from Module.utils import read_video, save_video  # 导入工具函数：读取视频和保存视频
-from Module.trackers import Tracker  # 导入跟踪器类
+from Module.common.utils import read_video, save_video  # 导入工具函数：读取视频和保存视频
+from Module.common.trackers import Tracker  # 导入跟踪器类
 import numpy as np  # numpy 数组运算
-from Module.team_assigner import TeamAssigner  # 导入球队分配器
-from Module.player_ball_assigner import PlayerBallAssigner  # 导入球员与球分配器
-from Module.camera_movement_estimator import CameraMovementEstimator  # 导入相机运动估计器
+from Module.common.team_assigner import TeamAssigner  # 导入球队分配器
+from Module.plugin.player_ball_assigner import PlayerBallAssigner  # 导入球员与球分配器
 from Module.view_transformer import ViewTransformer  # 导入视角变换器
-from Module.speed_and_distance_estimator import SpeedAndDistance_Estimator  # 导入速度与距离估计器
+from Module.plugin.speed_and_distance_estimator import SpeedAndDistance_Estimator  # 导入速度与距离估计器
 from Module.visualizer import plot_team_ball_control ,plot_players_speed_distance, plot_players_speed_distance_by_team
 #from Module.test import TestRunner  # 导入测试运行器
 import supervision as sv
 from Storage.field_configs.soccer import SoccerPitchConfiguration
-from Module.ball import extract_ball_paths, replace_outliers_based_on_distance , ball_filter, interpolate_ball_positions_transformed
+from Module.plugin.ball import extract_ball_paths, replace_outliers_based_on_distance , \
+    interpolate_ball_positions_transformed
 from Module.visualizer.pitch_annotation_tool import draw_pitch, draw_paths_on_pitch
 from test import test
 # =====================================================================================================================
@@ -22,7 +22,7 @@ import os
 PROJECT_ROOT = os.path.dirname(os.path.abspath(__file__))
 
 # 输入视频路径
-INPUT_VIDEO_PATH = os.path.join(PROJECT_ROOT, 'IO', 'input_videos', 'test_pugongying_25s.mp4')
+INPUT_VIDEO_PATH = os.path.join(PROJECT_ROOT, 'IO', 'input_videos', 'test.mp4')
 
 # 模型路径
 YOLO_MODEL_PATH = os.path.join(PROJECT_ROOT, 'Storage', 'models', 'yolo', 'best.pt')
@@ -65,11 +65,11 @@ def main():
 # ----------------------------------------------------------------------------------------------------------------------#
 
     # camera movement estimator
-    camera_movement_estimator = CameraMovementEstimator(video_frames[0])  # 用第一帧初始化相机运动估计器
-    camera_movement_per_frame = camera_movement_estimator.get_camera_movement(video_frames,
-                                                                              read_from_stub=READ_FROM_STUB,
-                                                                              stub_path=CAMERA_MOVEMENT_STUB_PATH)  # 获取相机在每一帧的运动（可从缓存读取）
-    camera_movement_estimator.add_adjust_positions_to_tracks(tracks, camera_movement_per_frame)  # 根据相机运动修正物体轨迹坐标
+    # camera_movement_estimator = CameraMovementEstimator(video_frames[0])  # 用第一帧初始化相机运动估计器
+    # camera_movement_per_frame = camera_movement_estimator.get_camera_movement(video_frames,
+    #                                                                           read_from_stub=READ_FROM_STUB,
+    #                                                                           stub_path=CAMERA_MOVEMENT_STUB_PATH)  # 获取相机在每一帧的运动（可从缓存读取）
+    # camera_movement_estimator.add_adjust_positions_to_tracks(tracks, camera_movement_per_frame)  # 根据相机运动修正物体轨迹坐标
 
 # ----------------------------------------------------------------------------------------------------------------------#
 
@@ -98,18 +98,18 @@ def main():
     print("#########tracks_test_after_interpolate#########")
 
     # 滤波处理
-    ball_paths_filtered = ball_filter(ball_paths_interpolated)
+    # ball_paths_filtered = ball_filter(ball_paths_interpolated)
     # ball_paths = replace_outliers_based_on_distance(ball_paths)
 
-    print("#########ball_paths_before_filter_test#########")
-    print(ball_paths_filtered[:10])
-    print("#########ball_paths_before_filter_test#########")
+    # print("#########ball_paths_before_filter_test#########")
+    # print(ball_paths_filtered[:10])
+    # print("#########ball_paths_before_filter_test#########")
 
     BALL_on_PITCH = draw_pitch(PITCH_CONFIG)
 
     BALL_on_PITCH = draw_paths_on_pitch(
         config=PITCH_CONFIG,
-        paths=ball_paths_filtered,
+        paths=ball_paths_interpolated,
         color=sv.Color.WHITE,
         pitch=BALL_on_PITCH)
 
@@ -142,7 +142,7 @@ def main():
     player_assigner = PlayerBallAssigner()  # 初始化球员-球分配器
     team_ball_control = []  # 记录每一帧的球队控球权
     for frame_num, player_track in enumerate(tracks['players']):  # 遍历每一帧
-        ball_bbox = tracks['ball'][frame_num][1]['bbox']  # 获取该帧球的包围框
+        ball_bbox = tracks['ball'][frame_num][1]['bbox']  # 获取该帧球的包围框     报错，遇到插值项沿用上一帧即可
         assigned_player = player_assigner.assign_ball_to_player(player_track, ball_bbox)  # 判断哪位球员持球
 
         if assigned_player != -1:  # 如果找到了持球队员

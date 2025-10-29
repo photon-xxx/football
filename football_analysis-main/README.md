@@ -19,6 +19,56 @@ The following modules are used in this project:
 ## Sample video
 -  [Sample input video](https://drive.google.com/file/d/1t6agoqggZKx6thamUuPAIdN_1zR9v9S_/view?usp=sharing)
 
+## Camera Movement Compensation Module
+
+### Camera Movement Detection and Compensation
+
+The camera movement estimator module (`Module/camera_movement_estimator/camera_movement_estimator.py`) provides functionality to detect and compensate for camera movement in football videos:
+
+#### `CameraMovementEstimator(frame)`
+Initializes the camera movement estimator with the first frame of the video.
+
+#### `get_camera_movement(frames, read_from_stub=False, stub_path=None)`
+Detects camera movement between consecutive frames using optical flow.
+- **Parameters:**
+  - `frames`: List of video frames in BGR format
+  - `read_from_stub`: Whether to read results from cache file
+  - `stub_path`: Path to cache file for storing/loading results
+- **Returns:** List of camera movement vectors for each frame `[[x, y], ...]`
+- **Algorithm:** Uses Lucas-Kanade optical flow to track fixed features in video edge regions
+
+#### `add_adjust_positions_to_tracks(tracks, camera_movement_per_frame)`
+Compensates tracked object positions by subtracting camera movement.
+- **Parameters:**
+  - `tracks`: Dictionary containing tracking results for all objects
+  - `camera_movement_per_frame`: List of camera movement vectors per frame
+- **Returns:** Updates tracks with `position_adjusted` field containing compensated positions
+
+#### `draw_camera_movement(frames, camera_movement_per_frame)`
+Visualizes camera movement information on video frames.
+- **Parameters:**
+  - `frames`: List of video frames
+  - `camera_movement_per_frame`: List of camera movement vectors per frame
+- **Returns:** Frames with semi-transparent overlay showing camera movement values
+
+### Usage Example
+
+```python
+from Module.common.camera_movement_estimator.camera_movement_estimator import CameraMovementEstimator
+
+# Initialize with first frame
+estimator = CameraMovementEstimator(first_frame)
+
+# Calculate camera movement for all frames
+camera_movement = estimator.get_camera_movement(frames, stub_path="camera_movement.pkl")
+
+# Compensate tracked object positions
+estimator.add_adjust_positions_to_tracks(tracks, camera_movement)
+
+# Visualize camera movement
+output_frames = estimator.draw_camera_movement(frames, camera_movement)
+```
+
 ## Ball Tracking Module
 
 ### Ball Path Processing Functions
@@ -47,8 +97,9 @@ Interpolates missing ball positions using linear interpolation.
 - **Algorithm:** Uses scipy.interpolate.interp1d for linear interpolation of missing points
 
 ### Usage Example
+
 ```python
-from Module.ball.ball import replace_outliers_based_on_distance
+from Module.plugin.ball import replace_outliers_based_on_distance
 import numpy as np
 
 # Example ball path with outlier
@@ -56,6 +107,42 @@ ball_path = np.array([[0, 0], [10, 10], [1000, 1000], [20, 20], [30, 30]])
 processed_path = replace_outliers_based_on_distance([ball_path], distance_threshold=50.0)
 # Result: [[0, 0], [10, 10], [nan, nan], [20, 20], [30, 30]]
 ```
+
+## Radar图生成测试功能
+
+### 单帧Radar图生成测试
+
+项目新增了单帧radar图生成测试功能，可以快速测试球场关键点检测和球员位置映射：
+
+#### `test()` 函数
+测试单帧视频的radar图生成功能，包括：
+- 球员、裁判、球的检测和跟踪
+- 球场关键点检测和透视变换
+- 球队颜色分配和队伍分类
+- Radar图生成和保存
+- 视频帧标注保存
+
+#### 使用方法
+```python
+# 运行测试
+python test.py
+```
+
+#### 输出文件
+- `IO/figures/test_radar.png`: 生成的radar图，显示球员在球场上的位置
+- `IO/figures/test_annotated_frame.png`: 标注后的视频帧，显示检测到的球员、裁判和球的边界框
+
+#### 关键特性
+- **单帧处理**: 只处理视频的第10帧，避免平滑处理问题
+- **自动队伍分类**: 使用K-means聚类自动分配球员队伍
+- **完整标注**: 同时生成radar图和带标注的视频帧
+- **调试友好**: 包含详细的调试信息和错误处理
+
+#### 故障排除
+如果遇到"变换矩阵为None"的警告，这通常是因为：
+1. 球场关键点检测置信度不足
+2. 单帧测试时平滑处理导致的问题（已自动修复）
+3. 视频帧中球场关键点不够清晰
 
 ## Requirements
 To run this project, you need to have the following requirements installed:

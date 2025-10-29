@@ -1,17 +1,15 @@
 from ultralytics import YOLO  # 导入 YOLO 检测模型
 import supervision as sv  # 导入 supervision 库，用于跟踪和可视化
 import pickle  # 用于保存/读取缓存数据
-import os  # 文件路径操作
 import numpy as np  # 数组运算
 import pandas as pd  # 表格数据处理（插值）
-import cv2  # OpenCV 绘图与图像处理
 import sys
 
-sys.path.append('../../')  # 将上级目录加入搜索路径，方便导入 utils
-from Module.utils import get_center_of_bbox, get_bbox_width, get_foot_position  # 导入工具函数
+sys.path.append('../../../')  # 将上级目录加入搜索路径，方便导入 utils
+from Module.common.utils import get_center_of_bbox, get_bbox_width, get_foot_position  # 导入工具函数
 
 
-# TODO: 追踪器
+# TODO: soccernet bot-sort追踪器
 class Tracker:  # 定义跟踪器类
     def __init__(self, model_path, nms_threshold=0.5):
         self.model = YOLO(model_path)  # 加载 YOLO 模型
