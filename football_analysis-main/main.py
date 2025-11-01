@@ -3,7 +3,7 @@ from Module.common.trackers import Tracker  # 导入跟踪器类
 import numpy as np  # numpy 数组运算
 from Module.common.team_assigner import TeamAssigner  # 导入球队分配器
 from Module.plugin.player_ball_assigner import PlayerBallAssigner  # 导入球员与球分配器
-from Module.view_transformer import ViewTransformer  # 导入视角变换器
+from Module.common.view_transformer import ViewTransformer  # 导入视角变换器
 from Module.plugin.speed_and_distance_estimator import SpeedAndDistance_Estimator  # 导入速度与距离估计器
 from Module.visualizer import plot_team_ball_control ,plot_players_speed_distance, plot_players_speed_distance_by_team
 #from Module.test import TestRunner  # 导入测试运行器
