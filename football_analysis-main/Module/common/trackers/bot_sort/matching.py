@@ -16,11 +16,15 @@
 """
 
 import numpy as np
+# 修复numpy版本兼容性问题 (numpy >= 1.24移除了np.object)
+if not hasattr(np, "object"):
+    np.object = object
+
 import scipy
 import lap
 from scipy.spatial.distance import cdist
 
-from . import kalman_filter
+from Module.common.trackers.bot_sort import kalman_filter
 
 
 def merge_matches(m1, m2, shape):

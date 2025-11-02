@@ -19,6 +19,10 @@
 """
 
 import numpy as np
+# 修复numpy版本兼容性问题 (numpy >= 1.24移除了np.object)
+if not hasattr(np, "object"):
+    np.object = object
+
 import scipy.linalg
 
 

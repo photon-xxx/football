@@ -19,15 +19,50 @@ BoTSORT (Boosting Online and Real-time Simple Online and Realtime Tracking) 跟�
 import numpy as np
 from collections import deque
 
-from . import matching
-from .gmc import GMC
-from .basetrack import BaseTrack, TrackState
-from .kalman_filter import KalmanFilter
+# 修复numpy版本兼容性问题 (numpy >= 1.24移除了np.object)
+if not hasattr(np, "object"):
+    np.object = object
+
+from Module.common.trackers.bot_sort import matching
+from Module.common.trackers.bot_sort.gmc import GMC
+from Module.common.trackers.bot_sort.basetrack import BaseTrack, TrackState
+from Module.common.trackers.bot_sort.kalman_filter import KalmanFilter
 
 # from fast_reid.fast_reid_interfece import FastReIDInterface
 
-from deep_oc_sort.reid_multibackend import ReIDDetectMultiBackend
-from ultralytics.yolo.utils.ops import xyxy2xywh, xywh2xyxy
+# 导入ReID模块，处理可能的导入错误
+try:
+    from deep_oc_sort.reid_multibackend import ReIDDetectMultiBackend
+except ImportError as e:
+    raise ImportError(
+        f"无法导入 deep_oc_sort.reid_multibackend: {e}\n"
+        "请安装 deep_oc_sort: pip install deep-oc-sort"
+    )
+
+# 导入ultralytics工具函数，处理可能的版本兼容性
+try:
+    from ultralytics.utils.ops import xyxy2xywh, xywh2xyxy
+except ImportError:
+    # 如果ultralytics版本不支持，使用备用实现
+    def xyxy2xywh(xyxy):
+        """将边界框从(x1,y1,x2,y2)转换为(x_center,y_center,w,h)"""
+        if isinstance(xyxy, np.ndarray):
+            xywh = xyxy.copy()
+        else:
+            xywh = np.array(xyxy)
+        xywh[:, 2:] = xywh[:, 2:] - xywh[:, :2]  # w, h = x2-x1, y2-y1
+        xywh[:, :2] = xywh[:, :2] + xywh[:, 2:] / 2  # x_center, y_center
+        return xywh
+    
+    def xywh2xyxy(xywh):
+        """将边界框从(x_center,y_center,w,h)转换为(x1,y1,x2,y2)"""
+        if isinstance(xywh, np.ndarray):
+            xyxy = xywh.copy()
+        else:
+            xyxy = np.array(xywh)
+        xyxy[:, :2] = xyxy[:, :2] - xyxy[:, 2:] / 2  # x1, y1
+        xyxy[:, 2:] = xyxy[:, :2] + xyxy[:, 2:]  # x2, y2
+        return xyxy
 
 
 class STrack(BaseTrack):
@@ -466,6 +501,11 @@ class BoTSORT(object):
         self.match_thresh = match_thresh            # 匹配阈值
 
         # 初始化ReID模型
+        # 如果model_weights为空字符串，使用默认模型名称
+        if model_weights == "" or model_weights is None:
+            # 使用默认的OSNet模型（最小且快速）
+            model_weights = "osnet_x0_25_msmt17.pt"
+        
         self.model = ReIDDetectMultiBackend(weights=model_weights, device=device, fp16=fp16)
 
         # 全局运动补偿
@@ -495,17 +535,32 @@ class BoTSORT(object):
         removed_stracks = []    # 移除的轨迹
         
         # 解析检测结果
-        xyxys = output_results[:, 0:4]      # 边界框坐标
-        xywh = xyxy2xywh(xyxys.numpy())     # 转换为中心点格式
-        confs = output_results[:, 4]         # 置信度
-        clss = output_results[:, 5]          # 类别
-        tracklab_ids = output_results[:, 6]  # 轨迹标签ID
+        # 兼容torch tensor和numpy array
+        if hasattr(output_results, 'numpy'):
+            # torch tensor
+            xyxys = output_results[:, 0:4].numpy()      # 边界框坐标
+            confs = output_results[:, 4].numpy()         # 置信度
+            clss = output_results[:, 5].numpy()          # 类别
+            tracklab_ids = output_results[:, 6].numpy()  # 轨迹标签ID
+        else:
+            # numpy array
+            xyxys = output_results[:, 0:4]      # 边界框坐标
+            confs = output_results[:, 4]         # 置信度
+            clss = output_results[:, 5]          # 类别
+            tracklab_ids = output_results[:, 6]  # 轨迹标签ID
         
-        # 转换为numpy数组
-        classes = clss.numpy()
-        xyxys = xyxys.numpy()
-        confs = confs.numpy()
-        tracklab_ids = tracklab_ids.numpy()
+        # 转换为numpy数组（确保所有都是numpy）
+        if not isinstance(xyxys, np.ndarray):
+            xyxys = np.array(xyxys)
+        if not isinstance(confs, np.ndarray):
+            confs = np.array(confs)
+        if not isinstance(clss, np.ndarray):
+            clss = np.array(clss)
+        if not isinstance(tracklab_ids, np.ndarray):
+            tracklab_ids = np.array(tracklab_ids)
+        
+        # 转换边界框格式：xyxy -> xywh (中心点+宽高)
+        xywh = xyxy2xywh(xyxys)
 
         # 根据置信度分离检测结果
         remain_inds = confs > self.track_high_thresh  # 高置信度检测
@@ -521,8 +576,8 @@ class BoTSORT(object):
         scores_keep = confs[remain_inds]     # 高置信度分数
         scores_second = confs[inds_second]   # 中等置信度分数
         
-        classes_keep = classes[remain_inds]  # 高置信度类别
-        clss_second = classes[inds_second]   # 中等置信度类别
+        classes_keep = clss[remain_inds]  # 高置信度类别
+        clss_second = clss[inds_second]   # 中等置信度类别
 
         tracklab_ids_keep = tracklab_ids[remain_inds]    # 高置信度轨迹ID
         tracklab_ids_second = tracklab_ids[inds_second]  # 中等置信度轨迹ID
@@ -689,12 +744,10 @@ class BoTSORT(object):
         outputs = []
         for t in output_stracks:
             output= []
-            tlwh = t.tlwh
+            # 使用tlbr属性直接获取(x1,y1,x2,y2)格式，避免格式转换错误
+            tlbr = t.tlbr
             tid = t.track_id
-            tlwh = np.expand_dims(tlwh, axis=0)
-            xyxy = xywh2xyxy(tlwh)
-            xyxy = np.squeeze(xyxy, axis=0)
-            output.extend(xyxy)
+            output.extend(tlbr.tolist() if isinstance(tlbr, np.ndarray) else list(tlbr))
             output.append(tid)
             output.append(t.cls)
             output.append(t.score)
