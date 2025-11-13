@@ -2,7 +2,7 @@ from Module.common.utils import read_video  # 导入工具函数：读取视频�
 from Module.common.trackers import Tracker  # 导入跟踪器类
 import numpy as np  # numpy 数组运算
 from Module.common.team_assigner import TeamAssigner  # 导入球队分配器
-from Module.view_transformer import ViewTransformer  # 导入视角变换器
+from Module.common.view_transformer import ViewTransformer  # 导入视角变换器
 import supervision as sv
 from Storage.field_configs.soccer import SoccerPitchConfiguration
 from Module.visualizer.pitch_annotation_tool import draw_pitch, draw_points_on_pitch

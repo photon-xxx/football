@@ -9,8 +9,13 @@ from Module.common.utils import read_video
 from Storage.field_configs.soccer import SoccerPitchConfiguration
 
 # 模型路径
+# 获取项目根目录（从当前文件向上导航到项目根目录）
+# 当前文件在: Module/common/view_transformer/KeyPoint_detection.py
+# PARENT_DIR = Module/common/view_transformer/
 PARENT_DIR = os.path.dirname(os.path.abspath(__file__))
-PITCH_DETECTION_MODEL_PATH = "/Storage/models/KeyPoint_detection/football-pitch-detection.pt"
+# 向上3级到达项目根目录: view_transformer -> common -> Module -> 项目根目录
+PROJECT_ROOT = os.path.dirname(os.path.dirname(os.path.dirname(PARENT_DIR)))
+PITCH_DETECTION_MODEL_PATH = os.path.join(PROJECT_ROOT, "Storage", "models", "KeyPoint_detection", "football-pitch-detection.pt")
 # 全局配置
 CONFIG = SoccerPitchConfiguration()
 
@@ -186,20 +191,70 @@ class KeyPointDetector:
 if __name__ == "__main__":
     import os
 
-    video_path = "/IO/input_videos/test_pugongying_6s.mp4"
+    # 修复视频路径：使用项目根目录的相对路径
+    PROJECT_ROOT = os.path.dirname(os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__)))))
+    video_path = os.path.join(PROJECT_ROOT, "IO", "input_videos", "test.mp4")
+    
+    print(f"正在读取视频: {video_path}")
+    if not os.path.exists(video_path):
+        print(f"错误: 视频文件不存在: {video_path}")
+        # 尝试查找其他视频文件
+        video_dir = os.path.join(PROJECT_ROOT, "IO", "input_videos")
+        if os.path.exists(video_dir):
+            videos = [f for f in os.listdir(video_dir) if f.endswith('.mp4')]
+            if videos:
+                print(f"可用的视频文件: {videos}")
+                video_path = os.path.join(video_dir, videos[0])
+                print(f"使用视频: {video_path}")
+            else:
+                print("错误: IO/input_videos 目录中没有找到视频文件")
+                exit(1)
+        else:
+            print(f"错误: 目录不存在: {video_dir}")
+            exit(1)
+    
     video_frames = read_video(video_path)
+    print(f"成功读取 {len(video_frames)} 帧")
+    
+    if len(video_frames) == 0:
+        print("错误: 视频为空或无法读取")
+        exit(1)
+    
     detector = KeyPointDetector(device="cuda")
     
-    # 使用置信度阈值0.8进行检测，检测第100帧
-    target_frame = 100
+    # 使用置信度阈值0.8进行检测，检测第100帧（如果存在）
+    target_frame = min(100, len(video_frames) - 1)
+    print(f"目标帧: {target_frame} (视频总帧数: {len(video_frames)})")
+    
+    found_frame = False
     for frame_idx, (frame, keypoints, indices) in enumerate(detector.detect_from_video(video_frames, conf_threshold=0.8)):
-        if frame_idx == target_frame:  # 检测第100帧
-            # 使用实际检测到的第100帧进行标注
+        if frame_idx == target_frame:  # 检测目标帧
+            found_frame = True
+            print(f"处理第 {frame_idx} 帧")
+            
+            # 检查关键点
+            if keypoints is not None and len(keypoints.xy[0]) > 0:
+                valid_points = sum(1 for x, y in keypoints.xy[0] if not (np.isnan(x) or np.isnan(y)))
+                print(f"检测到 {valid_points} 个有效关键点")
+            else:
+                print("警告: 未检测到关键点")
+            
+            # 使用实际检测到的帧进行标注
             annotated = detector.visualize_keypoints(frame, keypoints, indices)
+            
+            if annotated is None or annotated.size == 0:
+                print("错误: 标注图像为空")
+                break
+            
+            print("显示图像窗口，按任意键关闭...")
             cv2.imshow(f"KeyPoints Frame {target_frame} (Confidence > 0.8)", annotated)
             cv2.waitKey(0)
             cv2.destroyAllWindows()
+            print("窗口已关闭")
             break
+    
+    if not found_frame:
+        print(f"警告: 未找到第 {target_frame} 帧")
 
     # parser = argparse.ArgumentParser(description="KeyPoint Detection for Football Pitch")
     # parser.add_argument("--video", type=str, default= "E:\Soccer\\football\\football_analysis-main\IO\input_videos\\test_pugongying_6s.mp4", required=True, help="输入视频路径")

@@ -18,10 +18,11 @@ BoTSORT (Boosting Online and Real-time Simple Online and Realtime Tracking) 跟�
 
 import numpy as np
 from collections import deque
+from pathlib import Path
 
-# 修复numpy版本兼容性问题 (numpy >= 1.24移除了np.object)
-if not hasattr(np, "object"):
-    np.object = object
+# # 修复numpy版本兼容性问题 (numpy >= 1.24移除了np.object)
+# if not hasattr(np, "object"):
+#     np.object = object
 
 from Module.common.trackers.bot_sort import matching
 from Module.common.trackers.bot_sort.gmc import GMC
@@ -506,6 +507,10 @@ class BoTSORT(object):
             # 使用默认的OSNet模型（最小且快速）
             model_weights = "osnet_x0_25_msmt17.pt"
         
+        # 将字符串路径转换为Path对象（ReIDDetectMultiBackend需要Path对象）
+        if isinstance(model_weights, str):
+            model_weights = Path(model_weights)
+        
         self.model = ReIDDetectMultiBackend(weights=model_weights, device=device, fp16=fp16)
 
         # 全局运动补偿
@@ -591,7 +596,7 @@ class BoTSORT(object):
         if len(dets) > 0:
             '''Detections'''
             
-            detections = [STrack(xyxy, s, c, f.cpu().numpy(), tracklab_id=id) for
+            detections = [STrack(xyxy, s, c, f.detach().cpu().numpy(), tracklab_id=id) for
                               (xyxy, s, c, f, id) in zip(dets, scores_keep, classes_keep, features_keep, tracklab_ids_keep)]
         else:
             detections = []

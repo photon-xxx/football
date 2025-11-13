@@ -144,6 +144,108 @@ python test.py
 2. 单帧测试时平滑处理导致的问题（已自动修复）
 3. 视频帧中球场关键点不够清晰
 
+## BoTSORT追踪器使用方法
+
+### 两种处理模式对比
+
+BoTSORT追踪器支持两种主要的使用方法，各有优劣：
+
+#### 1. 逐帧实时处理方法
+- **适用场景**：实时视频流、摄像头输入、需要立即反馈
+- **优势**：延迟低、内存占用小、灵活性强
+- **劣势**：GPU利用率较低、检测速度较慢
+
+#### 2. 批量预处理方法
+- **适用场景**：视频文件离线处理、长视频分析
+- **优势**：GPU利用率高、检测速度快（2-5倍）、结果可复用
+- **劣势**：内存占用大、延迟高、不够灵活
+
+**详细对比分析**：请参考 [`Module/common/trackers/bot_sort/BoTSORT两种使用方法对比.md`](Module/common/trackers/bot_sort/BoTSORT两种使用方法对比.md)
+
+### 项目中的实现
+
+本项目在 `Module/common/trackers/tracker_botsort.py` 中采用**批量预处理方法**，因为：
+- 主要处理完整的视频文件
+- 追求最佳处理速度和GPU利用率
+- 支持结果缓存（stub机制），便于调试和参数调优
+
+### 基本使用示例
+
+```python
+from Module.common.trackers.tracker_botsort import Tracker
+
+# 初始化追踪器
+tracker = Tracker(
+    model_path="Storage/models/yolo/best.pt",
+    nms_threshold=0.5,
+    reid_model_path="Storage/models/reid/osnet_x0_25_msmt17.pt",
+    device='cuda',
+    fp16=True
+)
+
+# 处理视频帧（批量预处理模式）
+frames = load_video_frames("input_video.mp4")
+tracks = tracker.get_object_tracks(frames, stub_path="tracks.pkl")
+```
+
+更多详细信息请参考：
+- [`Module/common/trackers/bot_sort/BoTSORT使用文档.md`](Module/common/trackers/bot_sort/BoTSORT使用文档.md) - 基本使用方法
+- [`Module/common/trackers/bot_sort/BoTSORT两种使用方法对比.md`](Module/common/trackers/bot_sort/BoTSORT两种使用方法对比.md) - 两种处理模式对比
+- [`Module/common/trackers/bot_sort/追踪器与检测器的关系分析.md`](Module/common/trackers/bot_sort/追踪器与检测器的关系分析.md) - 检测与跟踪的独立性分析
+
+### 重要说明：检测与跟踪的独立性
+
+**追踪器的更新结果不影响下一帧的检测。** 检测（YOLO）和跟踪（BoTSORT）是两个完全独立的阶段：
+- 检测器每帧都进行**全图独立检测**，不依赖跟踪结果
+- 跟踪器只负责**关联匹配**和**状态维护**，不反馈给检测器
+- 这种设计保证了检测精度不受跟踪影响，避免误差累积
+
+详见 [`追踪器与检测器的关系分析.md`](Module/common/trackers/bot_sort/追踪器与检测器的关系分析.md)
+
+### 追踪算法对比
+
+项目中实现了两种追踪算法：
+
+1. **ByteTrack** (`tracker.py`) - 快速简单，适合基础场景
+2. **BoTSORT** (`tracker_botsort.py`) - 功能强大，适合复杂场景
+
+**详细对比分析**：请参考 [`Module/common/trackers/ByteTrack与BoTSORT原理对比.md`](Module/common/trackers/ByteTrack与BoTSORT原理对比.md)
+
+### 相机运动的影响与补偿
+
+在足球视频分析中，**相机运动**是影响跟踪准确性的重要因素：
+
+- **影响**：
+  - 静止目标被误判为移动
+  - 运动速度计算错误
+  - 轨迹匹配失败，ID切换频繁
+  - 位置测量不准确
+
+- **解决方案**：
+  - **BoTSORT内置GMC**：实时补偿相机运动，提高匹配准确性
+  - **后处理补偿**：修正位置数据，确保速度、距离测量准确
+
+**详细分析**：请参考 [`Module/common/trackers/相机运动对跟踪的影响分析.md`](Module/common/trackers/相机运动对跟踪的影响分析.md)
+
+### 球场坐标与GMC的关系
+
+项目使用透视变换将图像坐标转换为球场坐标（米），用于速度和距离计算。**即使使用球场坐标，GMC模块在跟踪匹配阶段仍然必要**：
+
+- **跟踪匹配阶段**：在图像空间进行，需要边界框信息（IoU），GMC补偿相机运动对匹配的影响
+- **分析计算阶段**：使用球场坐标（米），不受相机运动影响，不需要额外补偿
+
+**详细分析**：请参考 [`Module/common/trackers/球场坐标跟踪与GMC必要性分析.md`](Module/common/trackers/球场坐标跟踪与GMC必要性分析.md)
+
+### 基于球场坐标的跟踪方案
+
+理论上，如果透视变换足够稳定，可以**在球场坐标空间进行跟踪**，从而**弃用GMC模块**：
+
+- **方案**：YOLO检测 → 立即转换为球场坐标 → 在球场坐标空间跟踪
+- **优势**：不受相机运动影响、物理意义清晰、算法简化
+- **条件**：透视变换矩阵稳定、关键点检测准确
+
+**详细分析**：请参考 [`Module/common/trackers/基于球场坐标跟踪的可行性分析.md`](Module/common/trackers/基于球场坐标跟踪的可行性分析.md)
+
 ## Requirements
 To run this project, you need to have the following requirements installed:
 - Python 3.x
@@ -154,3 +256,4 @@ To run this project, you need to have the following requirements installed:
 - Matplotlib
 - Pandas
 - scipy (for signal processing)
+- deep-oc-sort (for BoTSORT tracker ReID features)

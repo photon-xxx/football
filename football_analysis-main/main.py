@@ -13,6 +13,7 @@ from Module.plugin.ball import extract_ball_paths, replace_outliers_based_on_dis
     interpolate_ball_positions_transformed
 from Module.visualizer.pitch_annotation_tool import draw_pitch, draw_paths_on_pitch
 from test import test
+from Module.visualizer.tracker_draw import draw_annotations
 # =====================================================================================================================
 # 全局配置变量 - 所有路径和参数设置
 # =====================================================================================================================
@@ -50,7 +51,7 @@ def main():
 
     # Read Video
     video_frames = read_video(INPUT_VIDEO_PATH)  # 读取输入视频，得到逐帧图像
-
+    
 #  ----------------------------------------------------------------------------------------------------------------------#
 
     # Initialize Tracker
@@ -156,7 +157,7 @@ def main():
 
     # Draw output
     ## Draw object Tracks
-    output_video_frames = tracker.draw_annotations(video_frames, tracks, team_ball_control)  # 在视频帧上绘制检测与跟踪结果
+    output_video_frames = draw_annotations(video_frames, tracks, team_ball_control)  # 在视频帧上绘制检测与跟踪结果
 
     ## Draw Camera movement
     output_video_frames = camera_movement_estimator.draw_camera_movement(output_video_frames,
