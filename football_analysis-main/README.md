@@ -1,14 +1,16 @@
 # Football Analysis Project
 
 ## Introduction
-The goal of this project is to detect and track players, referees, and footballs in a video using YOLO, one of the best AI object detection models available. We will also train the model to improve its performance. Additionally, we will assign players to teams based on the colors of their t-shirts using Kmeans for pixel segmentation and clustering. With this information, we can measure a team's ball acquisition percentage in a match. We will also use optical flow to measure camera movement between frames, enabling us to accurately measure a player's movement. Furthermore, we will implement perspective transformation to represent the scene's depth and perspective, allowing us to measure a player's movement in meters rather than pixels. Finally, we will calculate a player's speed and the distance covered. This project covers various concepts and addresses real-world problems, making it suitable for both beginners and experienced machine learning engineers.
+The goal of this project is to detect and track players, referees, and footballs in a video using YOLO, one of the best AI object detection models available. We will also train the model to improve its performance. Additionally, we will assign players to teams using a deep learning-based approach with SigLIP vision model for feature extraction, UMAP for dimensionality reduction, and KMeans for clustering. With this information, we can measure a team's ball acquisition percentage in a match. We will also use optical flow to measure camera movement between frames, enabling us to accurately measure a player's movement. Furthermore, we will implement perspective transformation to represent the scene's depth and perspective, allowing us to measure a player's movement in meters rather than pixels. Finally, we will calculate a player's speed and the distance covered. This project covers various concepts and addresses real-world problems, making it suitable for both beginners and experienced machine learning engineers.
 
 ![Screenshot](IO/output_videos/screenshot.png)
 
 ## Modules Used
 The following modules are used in this project:
 - YOLO: AI object detection model
-- Kmeans: Pixel segmentation and clustering to detect t-shirt color
+- SigLIP Vision Model: Deep visual feature extraction for team classification
+- UMAP: Dimensionality reduction for team clustering
+- KMeans: Clustering algorithm for team assignment
 - Optical Flow: Measure camera movement
 - Perspective Transformation: Represent scene depth and perspective
 - Speed and distance calculation per player
@@ -235,6 +237,131 @@ tracks = tracker.get_object_tracks(frames, stub_path="tracks.pkl")
 - **分析计算阶段**：使用球场坐标（米），不受相机运动影响，不需要额外补偿
 
 **详细分析**：请参考 [`Module/common/trackers/球场坐标跟踪与GMC必要性分析.md`](Module/common/trackers/球场坐标跟踪与GMC必要性分析.md)
+
+### 基于球场坐标的跟踪方案
+
+## 球队分类算法
+
+### 概述
+
+项目使用**基于SigLIP深度视觉特征的分类算法**来区分两支球队。相比传统的基于颜色的方法，新算法具有更高的准确率和鲁棒性。
+
+### 技术特点
+
+- **特征提取**：使用预训练的SigLIP视觉模型（`google/siglip-base-patch16-224`）提取768维深度特征
+- **降维处理**：使用UMAP将特征降维到3维，保留全局和局部结构
+- **聚类分类**：使用KMeans对降维后的特征进行2类聚类，区分两支球队
+
+### 优势
+
+- ✅ **高准确率**：能捕捉纹理、形状等视觉模式，不仅限于颜色
+- ✅ **鲁棒性强**：对光照变化、阴影、角度变化不敏感
+- ✅ **适应性强**：能区分颜色相似但纹理不同的球衣
+
+### 使用方法
+
+```python
+from Module.common.team_assigner import TeamAssigner
+
+# 初始化（支持GPU加速）
+team_assigner = TeamAssigner(device="cuda", batch_size=32)
+
+# 在第一帧初始化分类器
+team_assigner.assign_team_color(first_frame, player_detections)
+
+# 为每个球员分配队伍
+team_id = team_assigner.get_player_team(frame, player_bbox, player_id)
+```
+
+### 依赖要求
+
+新算法需要以下额外依赖：
+- `transformers`：用于加载SigLIP模型
+- `torch`：PyTorch深度学习框架
+- `umap-learn`：UMAP降维库
+- `tqdm`：进度条显示
+
+安装命令：
+```bash
+pip install transformers torch umap-learn tqdm
+```
+
+### 性能说明
+
+- **处理速度**：较慢（需要GPU加速），建议使用CUDA设备
+- **内存占用**：较大（需要加载预训练模型）
+- **首次运行**：会自动下载SigLIP模型（约500MB）
+
+**详细对比分析**：请参考 [`球队分类算法对比分析.md`](球队分类算法对比分析.md)
+
+---
+
+## 无追踪的球员检测与可视化流程
+
+### 概述
+
+`test_no_tracker.py` 提供了一个简化的流程，专注于球员检测和可视化，不进行追踪。这个流程适用于只需要分析球员位置分布、不需要追踪单个球员ID的场景。
+
+### 主要功能
+
+1. **YOLO检测球员**：使用YOLO模型检测视频中的球员（不进行追踪）
+2. **视角转换**：初始化视角转换器，将像素坐标转换为场地坐标（米）
+3. **队伍分配**：使用基于SigLIP深度视觉特征的分类算法自动分配队伍
+4. **数据存储**：按帧/队伍/ID存储球员坐标信息，支持缓存
+5. **可视化**：在球场图上可视化球员位置，区分两只球队
+
+### 数据结构
+
+球员数据按以下结构存储：
+
+```python
+player_data = {
+    frame_num: {
+        team_id: {
+            player_id: {
+                'bbox': [x1, y1, x2, y2],  # 检测框（像素坐标）
+                'position_pixel': [x, y],  # 脚部位置（像素坐标）
+                'position_transformed': [x, y]  # 场地坐标（米）
+            }
+        }
+    }
+}
+```
+
+### 使用方法
+
+```python
+# 直接运行脚本
+python test_no_tracker.py
+```
+
+### 配置参数
+
+在脚本中可以修改以下配置：
+
+- `INPUT_VIDEO_PATH`: 输入视频路径
+- `PLAYER_DETECTION_PATH`: YOLO模型路径
+- `DEVICE`: 运行设备（"cpu" 或 "cuda"）
+- `READ_FROM_STUB`: 是否从缓存读取（True/False）
+- `DETECTION_CONF_THRESHOLD`: 检测置信度阈值（默认0.3）
+- `NMS_THRESHOLD`: NMS阈值（默认0.5）
+
+### 输出结果
+
+1. **缓存文件**：`Storage/stubs/player_data_stub.pkl` - 存储处理后的球员数据
+2. **可视化图像**：`IO/figures/players_frame_{frame_num}.png` - 每帧的球场可视化图
+
+### 与完整流程的区别
+
+| 特性 | 完整流程 (main.py) | 无追踪流程 (test_no_tracker.py) |
+|------|-------------------|-------------------------------|
+| 追踪ID | ✅ 有 | ❌ 无 |
+| 检测 | ✅ YOLO | ✅ YOLO |
+| 视角转换 | ✅ 有 | ✅ 有 |
+| 队伍分配 | ✅ 有 | ✅ 有 |
+| 速度/距离计算 | ✅ 有 | ❌ 无 |
+| 球追踪 | ✅ 有 | ❌ 无 |
+| 适用场景 | 完整分析 | 位置分布分析 |
 
 ### 基于球场坐标的跟踪方案
 

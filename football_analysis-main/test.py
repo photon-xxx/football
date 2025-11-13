@@ -320,8 +320,8 @@ def test():
     vt_module.USE_SMOOTHING = original_USE_SMOOTHING
     print("完成视角变换")
 
-    # 初始化球队分配器
-    team_assigner = TeamAssigner()
+    # 初始化球队分配器（使用新算法，支持GPU加速）
+    team_assigner = TeamAssigner(device=DEVICE, batch_size=32)
     team_assigner.assign_team_color(first_frame, tracks['players'][0])
     print("完成球队颜色分配")
 

@@ -125,7 +125,7 @@ def main():
 # ----------------------------------------------------------------------------------------------------------------------#
 
     # Assign Player Teams
-    team_assigner = TeamAssigner()  # 初始化球队分配器
+    team_assigner = TeamAssigner(device=DEVICE, batch_size=32)  # 初始化球队分配器（使用新算法）
     team_assigner.assign_team_color(video_frames[0],
                                     tracks['players'][0])  # 在第一帧上为球员分配队伍颜色（两队）
 

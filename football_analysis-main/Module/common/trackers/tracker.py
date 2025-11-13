@@ -54,6 +54,8 @@ class Tracker:  # 定义跟踪器类
             detections += results  # 直接返回YOLO结果
         return detections
 
+
+    # TODO：更换追踪算法，结合坐标信息
     def get_object_tracks(self, frames, read_from_stub=False, stub_path=None):
         if read_from_stub and stub_path is not None and os.path.exists(stub_path):  # 若存在缓存文件
             with open(stub_path, 'rb') as f:

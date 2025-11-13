@@ -1,4 +1,5 @@
 import numpy as np  # 导入 numpy，处理数组与数值运算
+import cv2  # 导入 OpenCV，用于透视变换
 import sys
 import os
 from collections import deque           # 用于保存最近若干帧的变换矩阵（实现平滑）
