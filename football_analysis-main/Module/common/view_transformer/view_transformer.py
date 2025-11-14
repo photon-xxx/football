@@ -165,8 +165,11 @@ class ViewTransformer():  # 定义视角（透视）变换器类
                     else:
                         position_transformed = self.transform_point(position, frame_num)
             
+                    # 处理position_transformed：如果是numpy数组则转换，如果是list则直接使用
                     if position_transformed is not None:
-                        position_transformed = position_transformed.squeeze().tolist()
+                        if isinstance(position_transformed, np.ndarray):
+                            position_transformed = position_transformed.squeeze().tolist()
+                        # 如果已经是list，直接使用
                     tracks[object][frame_num][track_id]['position_transformed'] = position_transformed
 
 

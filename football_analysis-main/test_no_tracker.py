@@ -58,6 +58,7 @@ PITCH_CONFIG = SoccerPitchConfiguration()
 
 # 缓存文件路径
 PLAYER_DATA_STUB_PATH = os.path.join(PROJECT_ROOT, 'Storage', 'stubs', 'player_data_stub.pkl')
+TRACKING_INPUTS_STUB_PATH = os.path.join(PROJECT_ROOT, 'Storage', 'stubs', 'tracking_inputs_stub.pkl')
 
 # 输出路径
 FIGURES_SAVE_DIR = os.path.join(PROJECT_ROOT, 'IO', 'figures')
@@ -77,7 +78,7 @@ TEAM_COLORS = {
 }
 
 # YOLO检测配置
-DETECTION_CONF_THRESHOLD = 0.3  # 检测置信度阈值
+DETECTION_CONF_THRESHOLD = 0.7  # 检测置信度阈值
 NMS_THRESHOLD = 0.5  # NMS阈值
 
 # 队伍分类器训练配置
@@ -111,207 +112,6 @@ def detect_players_without_tracking(frames, model_path, conf_threshold=0.3, nms_
     
     print(f"检测完成，共处理 {len(detections)} 帧")
     return detections
-
-
-def process_detections_to_player_data(detections, video_frames, view_transformer, team_assigner, nms_threshold=0.5, training_frames=100):
-    """
-    处理检测结果，转换为按帧/队伍/id存储的球员数据
-    
-    参考代码的处理方式：
-    1. 先收集采样帧的球员crops（用于训练）
-    2. 统一训练分类器（fit）
-    3. 然后对每帧进行预测（predict）
-    
-    Args:
-        detections: YOLO检测结果列表
-        video_frames: 视频帧列表
-        view_transformer: 视角转换器
-        team_assigner: 队伍分配器
-        nms_threshold: NMS阈值
-        training_frames: 用于训练分类器的采样帧数（默认100帧）
-    
-    Returns:
-        dict: 按帧/队伍/id存储的球员数据
-    """
-    print("正在处理检测结果并分配队伍...")
-    
-    # 获取类别映射
-    cls_names = detections[0].names if detections else {}
-    cls_names_inv = {v: k for k, v in cls_names.items()}
-    
-    # 计算采样stride（用于训练分类器）
-    total_frames = len(detections)
-    if total_frames <= training_frames:
-        # 如果总帧数少于目标帧数，使用所有帧
-        stride = 1
-        sampled_frames = list(range(total_frames))
-        print(f"第一步：收集所有 {total_frames} 帧的球员裁剪图像（用于训练分类器）...")
-    else:
-        # 计算stride，确保采样到大约training_frames帧
-        stride = max(1, total_frames // training_frames)
-        sampled_frames = list(range(0, total_frames, stride))
-        print(f"第一步：从 {total_frames} 帧中采样 {len(sampled_frames)} 帧（stride={stride}）收集球员裁剪图像（用于训练分类器）...")
-    
-    # 第一步：收集采样帧的球员crops（用于统一训练）
-    all_player_crops = []
-    
-    for frame_num in sampled_frames:
-        detection = detections[frame_num]
-        # 转换为supervision格式
-        detection_supervision = sv.Detections.from_ultralytics(detection)
-        
-        # 处理守门员类别：将守门员归为player
-        for object_ind, class_id in enumerate(detection_supervision.class_id):
-            if cls_names.get(class_id) == "goalkeeper":
-                PLAYER_CLASS_ID = cls_names_inv.get("player", -1)
-                if PLAYER_CLASS_ID != -1:
-                    detection_supervision.class_id[object_ind] = PLAYER_CLASS_ID
-        
-        # 只处理球员类别
-        PLAYER_CLASS_ID = cls_names_inv.get('player', -1)
-        if PLAYER_CLASS_ID == -1:
-            continue
-        
-        player_detections = detection_supervision[detection_supervision.class_id == PLAYER_CLASS_ID]
-        
-        # 应用NMS
-        player_detections = player_detections.with_nms(threshold=nms_threshold, class_agnostic=True)
-        
-        # 提取每个球员的crop
-        for bbox in player_detections.xyxy:
-            bbox_list = bbox.tolist()
-            x1, y1, x2, y2 = map(int, bbox_list)
-            crop = video_frames[frame_num][y1:y2, x1:x2]
-            
-            if crop.size > 0:  # 确保裁剪不为空
-                all_player_crops.append(crop)
-    
-    if len(all_player_crops) < 2:
-        raise ValueError(f"收集到的球员数量不足 ({len(all_player_crops)})，无法进行队伍分类")
-    
-    print(f"共收集到 {len(all_player_crops)} 个球员裁剪图像（来自 {len(sampled_frames)} 个采样帧）")
-    
-    # 第二步：统一训练分类器（使用所有收集到的crops）
-    print("第二步：使用所有球员裁剪图像训练分类器...")
-    team_assigner.classifier.fit(all_player_crops)
-    team_assigner.is_fitted = True
-    print("分类器训练完成")
-    
-    # 第三步：对每帧进行预测并存储数据
-    print("第三步：对每帧进行队伍分配...")
-    player_data = {}
-    
-    # 计算队伍代表颜色（用于可视化）
-    # 对所有训练用的crops进行预测，用于计算队伍代表颜色
-    print("正在计算队伍代表颜色...")
-    all_predictions = team_assigner.classifier.predict(all_player_crops)
-    
-    team_1_colors = []
-    team_2_colors = []
-    
-    for i, (crop, prediction) in enumerate(zip(all_player_crops, all_predictions)):
-        avg_color = np.mean(crop.reshape(-1, 3), axis=0)
-        if prediction == 0:
-            team_1_colors.append(avg_color)
-        else:
-            team_2_colors.append(avg_color)
-    
-    if team_1_colors:
-        team_assigner.team_colors[1] = np.mean(team_1_colors, axis=0).tolist()
-    else:
-        team_assigner.team_colors[1] = [255, 0, 0]  # 默认红色
-    
-    if team_2_colors:
-        team_assigner.team_colors[2] = np.mean(team_2_colors, axis=0).tolist()
-    else:
-        team_assigner.team_colors[2] = [0, 0, 255]  # 默认蓝色
-    
-    print(f"队伍1代表颜色 (RGB): {team_assigner.team_colors[1]}")
-    print(f"队伍2代表颜色 (RGB): {team_assigner.team_colors[2]}")
-    
-    # 按帧组织数据
-    for frame_num, detection in enumerate(detections):
-        player_data[frame_num] = {1: {}, 2: {}}  # 初始化两个队伍的字典
-        
-        # 转换为supervision格式
-        detection_supervision = sv.Detections.from_ultralytics(detection)
-        
-        # 处理守门员类别：将守门员归为player
-        for object_ind, class_id in enumerate(detection_supervision.class_id):
-            if cls_names.get(class_id) == "goalkeeper":
-                PLAYER_CLASS_ID = cls_names_inv.get("player", -1)
-                if PLAYER_CLASS_ID != -1:
-                    detection_supervision.class_id[object_ind] = PLAYER_CLASS_ID
-        
-        # 只处理球员类别
-        PLAYER_CLASS_ID = cls_names_inv.get('player', -1)
-        if PLAYER_CLASS_ID == -1:
-            continue
-        
-        player_detections = detection_supervision[detection_supervision.class_id == PLAYER_CLASS_ID]
-        
-        # 应用NMS
-        player_detections = player_detections.with_nms(threshold=nms_threshold, class_agnostic=True)
-        
-        # 处理每个检测到的球员
-        # 先提取当前帧的所有crops，然后批量预测
-        current_frame_crops = []
-        
-        for bbox in player_detections.xyxy:
-            bbox_list = bbox.tolist()
-            x1, y1, x2, y2 = map(int, bbox_list)
-            crop = video_frames[frame_num][y1:y2, x1:x2]
-            
-            if crop.size > 0:
-                current_frame_crops.append(crop)
-        
-        # 对当前帧的crops进行预测（批量预测，提高效率）
-        if current_frame_crops:
-            current_frame_predictions = team_assigner.classifier.predict(current_frame_crops)
-        else:
-            current_frame_predictions = []
-        
-        # 处理每个检测到的球员
-        crop_idx = 0  # crops的索引
-        for i, bbox in enumerate(player_detections.xyxy):
-            bbox_list = bbox.tolist()
-            
-            # 获取预测结果（crops和detections的顺序一致）
-            if crop_idx < len(current_frame_predictions):
-                team_id = int(current_frame_predictions[crop_idx]) + 1  # 0 -> 1, 1 -> 2
-                crop_idx += 1
-            else:
-                # 如果crops数量不足，跳过这个检测
-                continue
-            
-            # 获取脚部位置（像素坐标）
-            position_pixel = get_foot_position(bbox_list)
-            
-            # 转换为场地坐标
-            position_transformed = None
-            if view_transformer.perspective_transformers[frame_num] is not None:
-                position_transformed = view_transformer.transform_point(position_pixel, frame_num)
-                if position_transformed is not None:
-                    position_transformed = position_transformed.squeeze().tolist()
-                    # 检查是否为NaN
-                    if isinstance(position_transformed, (list, np.ndarray)) and np.isnan(position_transformed).any():
-                        position_transformed = None
-            
-            # 存储数据（使用检测索引作为player_id）
-            player_id = i
-            player_data[frame_num][team_id][player_id] = {
-                'bbox': bbox_list,
-                'position_pixel': list(position_pixel),
-                'position_transformed': position_transformed
-            }
-        
-        if frame_num % 30 == 0:
-            team1_count = len(player_data[frame_num][1])
-            team2_count = len(player_data[frame_num][2])
-            print(f"帧 {frame_num}: 队伍1有 {team1_count} 个球员, 队伍2有 {team2_count} 个球员")
-    
-    print("处理完成！")
-    return player_data
 
 
 def visualize_players_on_pitch(player_data, frame_num, config=PITCH_CONFIG):
@@ -367,37 +167,37 @@ def visualize_players_on_pitch(player_data, frame_num, config=PITCH_CONFIG):
     return pitch_image
 
 
-def save_player_data(player_data, stub_path):
+def save_tracking_inputs(tracking_inputs, stub_path):
     """
-    保存球员数据到缓存文件
+    保存追踪输入数据到缓存文件
     
     Args:
-        player_data: 球员数据字典
+        tracking_inputs: 追踪输入数据列表
         stub_path: 缓存文件路径
     """
-    print(f"正在保存球员数据到: {stub_path}")
+    print(f"正在保存追踪输入数据到: {stub_path}")
     os.makedirs(os.path.dirname(stub_path), exist_ok=True)
     with open(stub_path, 'wb') as f:
-        pickle.dump(player_data, f)
+        pickle.dump(tracking_inputs, f)
     print("保存完成！")
 
 
-def load_player_data(stub_path):
+def load_tracking_inputs(stub_path):
     """
-    从缓存文件加载球员数据
+    从缓存文件加载追踪输入数据
     
     Args:
         stub_path: 缓存文件路径
     
     Returns:
-        dict: 球员数据字典，如果文件不存在则返回None
+        list: 追踪输入数据列表，如果文件不存在则返回None
     """
     if os.path.exists(stub_path):
-        print(f"正在从缓存加载数据: {stub_path}")
+        print(f"正在从缓存加载追踪输入数据: {stub_path}")
         with open(stub_path, 'rb') as f:
-            player_data = pickle.load(f)
-        print(f"加载完成，共 {len(player_data)} 帧")
-        return player_data
+            tracking_inputs = pickle.load(f)
+        print(f"加载完成，共 {len(tracking_inputs)} 帧")
+        return tracking_inputs
     return None
 
 
@@ -554,15 +354,15 @@ def main():
     view_transformer = ViewTransformer(video_frames, device=DEVICE)
     print("视角转换器初始化完成")
     
-    # 4. 处理检测结果并分配队伍
-    print("\n[步骤 4/5] 处理检测结果并分配队伍...")
+    # 4. 处理检测结果并分配队伍，生成tracking_inputs格式
+    print("\n[步骤 4/5] 处理检测结果并分配队伍，生成tracking_inputs格式...")
     
     # 检查是否从缓存读取
-    player_data = None
+    tracking_inputs = None
     if READ_FROM_STUB:
-        player_data = load_player_data(PLAYER_DATA_STUB_PATH)
+        tracking_inputs = load_tracking_inputs(TRACKING_INPUTS_STUB_PATH)
     
-    if player_data is None:
+    if tracking_inputs is None:
         # 初始化队伍分配器（使用新算法，支持GPU加速）
         # 只使用本地模型路径
         if not os.path.exists(SIGLIP_MODEL_PATH):
@@ -581,20 +381,119 @@ def main():
         print(f"使用本地模型路径: {SIGLIP_MODEL_PATH}")
         team_assigner = TeamAssigner(device=DEVICE, batch_size=32, local_model_path=SIGLIP_MODEL_PATH)
         
-        # 处理检测结果
-        player_data = process_detections_to_player_data(
+        # 使用封装好的方法分配球队
+        player_data_raw = team_assigner.assign_teams_from_detections(
             detections,
             video_frames,
-            view_transformer,
-            team_assigner,
             nms_threshold=NMS_THRESHOLD,
             training_frames=TRAINING_FRAMES
         )
         
+        # 直接生成tracking_inputs格式
+        tracking_inputs = []
+        cls_names = {0: 'player', 1: 'referee', 2: 'ball'}
+        cls_names_inv = {v: k for k, v in cls_names.items()}
+        
+        for frame_num, detection in enumerate(detections):
+            detections_pitch = []
+            detections_info = []
+            
+            if frame_num in player_data_raw:
+                # 遍历每个队伍的球员
+                for team_id in [1, 2]:
+                    if team_id not in player_data_raw[frame_num]:
+                        continue
+                    
+                    team_players = player_data_raw[frame_num][team_id]
+                    if not team_players:
+                        continue
+                    
+                    # 获取队伍颜色
+                    team_color = TEAM_COLORS.get(team_id, sv.Color.RED)
+                    if hasattr(team_color, 'as_bgr'):
+                        team_color_bgr = team_color.as_bgr()
+                    else:
+                        team_color_bgr = team_color
+                    
+                    # 遍历该队伍的每个球员
+                    for player_id, player_info in team_players.items():
+                        bbox = player_info.get('bbox')
+                        position_pixel = player_info.get('position_pixel')
+                        
+                        # 检查数据有效性
+                        if bbox is None or len(bbox) != 4 or np.isnan(bbox).any():
+                            continue
+                        
+                        # 转换为场地坐标
+                        position_transformed = None
+                        if view_transformer.perspective_transformers[frame_num] is not None:
+                            position_transformed = view_transformer.transform_point(position_pixel, frame_num)
+                            if position_transformed is not None:
+                                position_transformed = position_transformed.squeeze().tolist()
+                                if isinstance(position_transformed, (list, np.ndarray)) and np.isnan(position_transformed).any():
+                                    position_transformed = None
+                        
+                        if position_transformed is None:
+                            continue
+                        
+                        # 确保position_transformed是有效的
+                        if isinstance(position_transformed, (list, np.ndarray)):
+                            pos_array = np.array(position_transformed)
+                            if len(pos_array) != 2 or np.isnan(pos_array).any():
+                                continue
+                        else:
+                            continue
+                        
+                        # 添加到追踪输入
+                        detections_pitch.append(position_transformed)
+                        detections_info.append({
+                            'bbox': bbox,
+                            'position_pixel': position_pixel,
+                            'class_id': cls_names_inv['player'],  # 类别ID（player=0, referee=1, ball=2）
+                            'confidence': 1.0,  # player_data中没有置信度，使用默认值
+                            'team': team_id,
+                            'team_color': team_color_bgr
+                        })
+            
+            tracking_inputs.append({
+                'frame_num': frame_num,
+                'detections_pitch': detections_pitch,
+                'detections_info': detections_info,
+                'cls_names': cls_names,
+                'cls_names_inv': cls_names_inv
+            })
+        
         # 保存到缓存
-        save_player_data(player_data, PLAYER_DATA_STUB_PATH)
+        save_tracking_inputs(tracking_inputs, TRACKING_INPUTS_STUB_PATH)
     else:
         print("使用缓存数据，跳过检测和队伍分配")
+    
+    # 为了兼容可视化部分，从tracking_inputs生成player_data（如果需要）
+    # 注意：如果后续步骤不需要player_data，可以删除这部分
+    player_data = {}
+    for tracking_input in tracking_inputs:
+        frame_num = tracking_input['frame_num']
+        detections_pitch = tracking_input['detections_pitch']
+        detections_info = tracking_input['detections_info']
+        
+        player_data[frame_num] = {1: {}, 2: {}}
+        
+        for i, det_info in enumerate(detections_info):
+            if det_info.get('class_id') != 0:  # 只处理球员
+                continue
+            
+            team_id = det_info.get('team')
+            if team_id not in [1, 2]:
+                continue
+            
+            position_pitch = detections_pitch[i]
+            player_id = len(player_data[frame_num][team_id])  # 简单的ID分配
+            
+            player_data[frame_num][team_id][player_id] = {
+                'bbox': det_info['bbox'],
+                'position_pixel': det_info['position_pixel'],
+                'position_transformed': position_pitch
+            }
     
     # 5. 可视化（生成视频）
     print("\n[步骤 5/5] 生成球员位置可视化视频...")

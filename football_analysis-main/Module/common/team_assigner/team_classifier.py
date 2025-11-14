@@ -57,7 +57,7 @@ class TeamClassifier:
     
     使用预训练的SigLIP模型提取深度特征，UMAP降维，KMeans聚类来区分两支球队。
     """
-    def __init__(self, device: str = 'cpu', batch_size: int = 32, local_model_path: str = None):
+    def __init__(self, device: str = 'cpu', batch_size: int = 32, local_model_path: str = None, verbose: bool = False):
         """
         初始化TeamClassifier
         
@@ -65,9 +65,11 @@ class TeamClassifier:
             device: 运行设备 ('cpu' 或 'cuda')
             batch_size: 批量处理图像的大小
             local_model_path: 本地模型路径（必需），如果为None则使用LOCAL_SIGLIP_MODEL_PATH
+            verbose: 是否显示详细输出（默认False）
         """
         self.device = device
         self.batch_size = batch_size
+        self.verbose = verbose
         
         # 确定使用的模型路径（只支持本地路径）
         import os
@@ -111,7 +113,8 @@ class TeamClassifier:
                 f"请确保所有必需文件都已下载"
             )
         
-        print(f"正在从本地路径加载SigLIP模型: {model_path}")
+        if self.verbose:
+            print(f"正在从本地路径加载SigLIP模型: {model_path}")
         
         try:
             # 只使用本地文件，不尝试从网络下载
@@ -133,7 +136,8 @@ class TeamClassifier:
         self.reducer = UMAP(n_components=3, random_state=42)
         self.cluster_model = KMeans(n_clusters=2, random_state=42, n_init=10)
         self.is_fitted = False
-        print("✓ SigLIP模型加载完成")
+        if self.verbose:
+            print("✓ SigLIP模型加载完成")
 
     def extract_features(self, crops: List[np.ndarray]) -> np.ndarray:
         """
@@ -151,7 +155,9 @@ class TeamClassifier:
         data = []
         
         with torch.no_grad():
-            for batch in tqdm(batches, desc='提取视觉特征'):
+            # 只在verbose模式下显示进度条
+            batch_iter = tqdm(batches, desc='提取视觉特征') if self.verbose else batches
+            for batch in batch_iter:
                 inputs = self.processor(
                     images=batch, return_tensors="pt").to(self.device)
                 outputs = self.features_model(**inputs)
@@ -171,17 +177,21 @@ class TeamClassifier:
         if len(crops) == 0:
             raise ValueError("训练数据不能为空")
         
-        print(f"正在提取 {len(crops)} 个球员的特征...")
+        if self.verbose:
+            print(f"正在提取 {len(crops)} 个球员的特征...")
         data = self.extract_features(crops)
         
-        print("正在使用UMAP降维...")
+        if self.verbose:
+            print("正在使用UMAP降维...")
         projections = self.reducer.fit_transform(data)
         
-        print("正在训练KMeans聚类器...")
+        if self.verbose:
+            print("正在训练KMeans聚类器...")
         self.cluster_model.fit(projections)
         
         self.is_fitted = True
-        print("分类器训练完成")
+        if self.verbose:
+            print("分类器训练完成")
 
     def predict(self, crops: List[np.ndarray]) -> np.ndarray:
         """
