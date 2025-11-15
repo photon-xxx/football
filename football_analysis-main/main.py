@@ -353,7 +353,7 @@ def convert_player_data_to_tracking_input(player_data, view_transformer):
                 detections_info.append({
                     'bbox': bbox,
                     'position_pixel': position_pixel,
-                    'class_id': cls_names_inv['player'],  # 类别ID（player=0, referee=1, ball=2）
+                    'class_id': cls_names_inv['player'] - 1,  # 类别ID减1（Roboflow类别ID调整，匹配tracker_pitch的期望）
                     'confidence': 1.0,  # player_data中没有置信度，使用默认值
                     'team': team_id,
                     'team_color': team_color_bgr

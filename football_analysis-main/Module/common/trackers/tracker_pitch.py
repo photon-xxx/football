@@ -36,10 +36,13 @@ import pickle
 import numpy as np
 import os
 import sys
+import cv2
 from scipy.optimize import linear_sum_assignment
+from typing import Optional
 
 sys.path.append('../../../')
 from Module.common.utils import get_foot_position
+from Storage.field_configs.soccer import SoccerPitchConfiguration
 
 
 class PitchKalmanFilter:
@@ -247,6 +250,151 @@ class PitchTrack:
     def mark_missed(self):
         """标记为丢失"""
         self.lost_count += 1
+    
+    def draw_on_pitch(
+        self,
+        pitch_image: np.ndarray,
+        config: SoccerPitchConfiguration,
+        draw_trajectory: bool = True,
+        draw_current_position: bool = True,
+        draw_track_id: bool = True,
+        point_radius: int = 10,
+        trajectory_thickness: int = 2,
+        trajectory_color: Optional[sv.Color] = None,
+        point_color: Optional[sv.Color] = None,
+        padding: int = 50,
+        scale: float = 0.1
+    ) -> np.ndarray:
+        """
+        在球场图像上绘制轨迹
+        
+        Args:
+            pitch_image: 球场图像（BGR格式）
+            config: 球场配置对象
+            draw_trajectory: 是否绘制轨迹历史路径，默认True
+            draw_current_position: 是否绘制当前位置点，默认True
+            draw_track_id: 是否显示轨迹ID文本，默认True
+            point_radius: 当前位置点的半径（像素），默认10
+            trajectory_thickness: 轨迹线条粗细（像素），默认2
+            trajectory_color: 轨迹线条颜色，如果为None则根据team自动选择
+            point_color: 当前位置点颜色，如果为None则根据team自动选择
+            padding: 球场周围的填充像素，默认50
+            scale: 球场尺寸缩放比例，默认0.1
+        
+        Returns:
+            np.ndarray: 绘制后的球场图像
+        """
+        # 根据team选择颜色（如果没有指定）
+        if trajectory_color is None or point_color is None:
+            if self.team == 1:
+                default_color = sv.Color.RED
+            elif self.team == 2:
+                default_color = sv.Color.BLUE
+            else:
+                default_color = sv.Color.WHITE
+            
+            if trajectory_color is None:
+                trajectory_color = default_color
+            if point_color is None:
+                point_color = default_color
+        
+        # 绘制轨迹历史路径
+        if draw_trajectory and len(self.trajectory_history) > 1:
+            # 提取轨迹历史中的所有位置点
+            trajectory_points = []
+            for hist in self.trajectory_history:
+                pos = hist.get('position_pitch')
+                if pos is not None:
+                    if isinstance(pos, (list, np.ndarray)):
+                        pos_array = np.array(pos)
+                        if len(pos_array) == 2 and not np.isnan(pos_array).any():
+                            trajectory_points.append(pos_array)
+            
+            if len(trajectory_points) > 1:
+                trajectory_points = np.array(trajectory_points)
+                # 将路径中的每个点按比例缩放并添加填充偏移
+                scaled_path = [
+                    (
+                        int(point[0] * scale) + padding,
+                        int(point[1] * scale) + padding
+                    )
+                    for point in trajectory_points
+                ]
+                
+                # 连接相邻点绘制路径
+                for i in range(len(scaled_path) - 1):
+                    cv2.line(
+                        img=pitch_image,
+                        pt1=scaled_path[i],
+                        pt2=scaled_path[i + 1],
+                        color=trajectory_color.as_bgr(),
+                        thickness=trajectory_thickness
+                    )
+        
+        # 绘制当前位置点
+        if draw_current_position:
+            if self.position_pitch is not None:
+                pos_array = np.array(self.position_pitch)
+                if len(pos_array) == 2 and not np.isnan(pos_array).any():
+                    scaled_point = (
+                        int(pos_array[0] * scale) + padding,
+                        int(pos_array[1] * scale) + padding
+                    )
+                    
+                    # 绘制填充的圆（点的内部）
+                    cv2.circle(
+                        img=pitch_image,
+                        center=scaled_point,
+                        radius=point_radius,
+                        color=point_color.as_bgr(),
+                        thickness=-1  # -1表示填充整个圆
+                    )
+                    
+                    # 绘制边框圆（点的边缘）
+                    cv2.circle(
+                        img=pitch_image,
+                        center=scaled_point,
+                        radius=point_radius,
+                        color=sv.Color.BLACK.as_bgr(),
+                        thickness=2
+                    )
+                    
+                    # 显示轨迹ID
+                    if draw_track_id and self.track_id is not None:
+                        text = str(self.track_id)
+                        font = cv2.FONT_HERSHEY_SIMPLEX
+                        font_scale = 0.5
+                        text_thickness = 1
+                        
+                        # 计算文本大小以居中显示
+                        (text_width, text_height), baseline = cv2.getTextSize(
+                            text, font, font_scale, text_thickness
+                        )
+                        text_x = scaled_point[0] - text_width // 2
+                        text_y = scaled_point[1] + text_height // 2
+                        
+                        # 绘制文本背景（白色矩形）
+                        cv2.rectangle(
+                            img=pitch_image,
+                            pt1=(text_x - 2, text_y - text_height - 2),
+                            pt2=(text_x + text_width + 2, text_y + baseline + 2),
+                            color=(255, 255, 255),
+                            thickness=-1
+                        )
+                        
+                        # 绘制文本
+                        cv2.putText(
+                            img=pitch_image,
+                            text=text,
+                            org=(text_x, text_y),
+                            fontFace=font,
+                            fontScale=font_scale,
+                            color=(0, 0, 0),
+                            thickness=text_thickness,
+                            lineType=cv2.LINE_AA
+                        )
+        
+        return pitch_image
 
 
 class Tracker:
@@ -295,8 +443,8 @@ class Tracker:
             self.dt = 1.0  # 卡尔曼滤波时间步长（帧数）
         else:
             self.use_sampling = True
-            self.sample_interval = int(video_fps / sampling_rate)  # 采样间隔（帧数）
-            self.dt = self.sample_interval  # 卡尔曼滤波时间步长（帧数）
+        self.sample_interval = int(video_fps / sampling_rate)  # 采样间隔（帧数）
+        self.dt = self.sample_interval  # 卡尔曼滤波时间步长（帧数）
         
         # 追踪参数
         self.distance_threshold_primary = distance_threshold_primary
@@ -322,133 +470,17 @@ class Tracker:
         if view_transformer is None:
             print("警告: 未提供view_transformer，将使用简化的追踪模式")
     
-    
-    def detect_frames(self, frames, batch_size=12, conf_threshold=0.3):
-        """
-        使用YOLO进行检测（独立方法）
-        
-        Args:
-            frames: 视频帧列表
-            batch_size: 批次大小
-            conf_threshold: 检测置信度阈值
-        
-        Returns:
-            list: 每帧的检测结果列表，每个元素是ultralytics Results对象
-        """
-        detections = []
-        total_detections = 0
-        player_detections = 0
-        for i in range(0, len(frames), batch_size):
-            batch_frames = frames[i:i + batch_size]
-            results = self.model.predict(batch_frames, conf=conf_threshold, verbose=False)
-            detections.extend(results)
-            # 统计检测数量
-            for result in results:
-                if hasattr(result, 'boxes') and result.boxes is not None:
-                    total_detections += len(result.boxes)
-                    # 统计球员检测
-                    if hasattr(result, 'names'):
-                        cls_names = result.names
-                        cls_names_inv = {v: k for k, v in cls_names.items()}
-                        if 'player' in cls_names_inv:
-                            player_id = cls_names_inv['player']
-                            player_boxes = result.boxes[result.boxes.cls == player_id]
-                            player_detections += len(player_boxes)
-        return detections
-    
-    def _process_detections_to_tracking_input(self, detections, view_transformer, detections_with_teams=None):
-        """
-        将YOLO检测结果转换为追踪器输入格式
-        
-        Args:
-            detections: YOLO检测结果列表
-            view_transformer: ViewTransformer对象
-            detections_with_teams: 球队分配结果（可选）{frame_num: {detection_idx: (team, team_color)}}
-        
-        Returns:
-            list: 每帧的追踪输入数据
-                [
-                    {
-                        'frame_num': int,
-                        'detections_pitch': [[x, y], ...],  # 场地坐标
-                        'detections_info': [{bbox, position_pixel, class_id, confidence, team, team_color}, ...]
-                    },
-                    ...
-                ]
-        """
-        tracking_inputs = []
-        
-        for frame_num, detection in enumerate(detections):
-            cls_names = detection.names
-            cls_names_inv = {v: k for k, v in cls_names.items()}
-            
-            detection_supervision = sv.Detections.from_ultralytics(detection)
-            
-            # 处理守门员类别
-            for object_ind, class_id in enumerate(detection_supervision.class_id):
-                if cls_names[class_id] == "goalkeeper":
-                    detection_supervision.class_id[object_ind] = cls_names_inv["player"]
-            
-            # 分离球和其他对象
-            BALL_ID = cls_names_inv['ball']
-            all_detections = detection_supervision[detection_supervision.class_id != BALL_ID]
-            
-            # 应用NMS（如果使用采样，只在采样帧处理；否则每帧都处理）
-            if not self.use_sampling or frame_num % self.sample_interval == 0:
-                all_detections = all_detections.with_nms(threshold=self.nms_threshold, class_agnostic=True)
-            
-            # 转换检测到场地坐标
-            detections_pitch = []
-            detections_info = []
-            
-            # 获取当前帧的球队分配结果
-            frame_teams = detections_with_teams.get(frame_num, {}) if detections_with_teams else {}
-            
-            for i in range(len(all_detections)):
-                bbox = all_detections.xyxy[i]
-                bbox_list = bbox.tolist()
-                
-                # 提取位置点
-                position_pixel = get_foot_position(bbox_list)
-                
-                # 转换为场地坐标
-                position_pitch = view_transformer.transform_point(position_pixel, frame_num)
-                
-                if position_pitch is not None and not np.isnan(position_pitch).any():
-                    position_pitch = position_pitch.squeeze().tolist()
-                    if isinstance(position_pitch, list) and len(position_pitch) == 2:
-                        det_info = {
-                            'bbox': bbox_list,
-                            'position_pixel': list(position_pixel),
-                            'class_id': all_detections.class_id[i] - 1,  # Roboflow类别ID调整
-                            'confidence': all_detections.confidence[i] if hasattr(all_detections, 'confidence') else 1.0
-                        }
-                        
-                        # 如果提供了球队信息，添加到检测信息中
-                        if i in frame_teams:
-                            team, team_color = frame_teams[i]
-                            det_info['team'] = team
-                            det_info['team_color'] = team_color
-                        
-                        detections_pitch.append(position_pitch)
-                        detections_info.append(det_info)
-            
-            tracking_inputs.append({
-                'frame_num': frame_num,
-                'detections_pitch': detections_pitch,
-                'detections_info': detections_info,
-                'cls_names': cls_names,
-                'cls_names_inv': cls_names_inv
-            })
-        
-        return tracking_inputs
-    
     def track_detections(self, tracking_inputs, frames=None):
         """
         基于检测结果进行追踪（独立方法）
         
+        新的追踪逻辑：
+        1. 使用第一次有球员检测的帧初始化轨迹
+        2. 循环匹配：对比前后两帧进行智能匹配
+        3. 删除小于5帧的轨迹
+        
         Args:
-            tracking_inputs: 追踪输入数据（由_process_detections_to_tracking_input生成）
+            tracking_inputs: 追踪输入数据（由save_tracking_inputs保存的格式）
             frames: 视频帧列表（可选，用于处理球检测）
         
         Returns:
@@ -491,9 +523,59 @@ class Tracker:
             # 如果没有frames，初始化空的球检测
             for _ in tracking_inputs:
                 tracks["ball"].append({1: {"bbox": [np.nan, np.nan, np.nan, np.nan]}})
+    
+        # 步骤1：找到第一次有球员检测的帧，初始化轨迹
+        first_frame_with_players = None
+        for idx, tracking_input in enumerate(tracking_inputs):
+            detections_pitch = tracking_input['detections_pitch']
+            detections_info = tracking_input['detections_info']
+            
+            # 检查是否有球员检测
+            player_detections = []
+            for i, det_info in enumerate(detections_info):
+                if det_info.get('class_id') == tracking_input['cls_names_inv'].get('player', 0) - 1:
+                    player_detections.append((i, detections_pitch[i], det_info))
+            
+            if len(player_detections) > 0:
+                first_frame_with_players = idx
+                frame_num = tracking_input['frame_num']
+                
+                # 初始化轨迹：有几个球员检测，初始化几条轨迹
+                for det_idx, det_pitch, det_info in player_detections:
+                    new_track = PitchTrack(
+                        det_pitch,
+                        det_info['class_id'],
+                        frame_num,
+                        track_id=self.next_id,
+                        dt=self.dt
+                    )
+                    new_track.bbox = det_info.get('bbox')
+                    new_track.position_pixel = det_info.get('position_pixel')
+                    if 'team' in det_info:
+                        new_track.team = det_info['team']
+                    if 'team_color' in det_info:
+                        new_track.team_color = det_info['team_color']
+                    # 初始化轨迹历史
+                    new_track.update(
+                        det_pitch,
+                        bbox=det_info.get('bbox'),
+                        position_pixel=det_info.get('position_pixel'),
+                        frame_num=frame_num,
+                        team=det_info.get('team'),
+                        team_color=det_info.get('team_color')
+                    )
+                    self.tracks.append(new_track)
+                    self.next_id += 1
+                
+                print(f"  初始化: 帧{frame_num}，创建{len(player_detections)}条轨迹")
+                break
         
-        # 处理每一帧的追踪（按采样频率）
-        for tracking_input in tracking_inputs:
+        if first_frame_with_players is None:
+            print("  警告: 没有找到有球员检测的帧")
+            return tracks
+        
+        # 步骤2：处理每一帧的追踪（从初始化帧之后开始）
+        for frame_idx, tracking_input in enumerate(tracking_inputs):
             frame_num = tracking_input['frame_num']
             detections_pitch = tracking_input['detections_pitch']
             detections_info = tracking_input['detections_info']
@@ -503,6 +585,30 @@ class Tracker:
             # 初始化该帧的字典
             tracks["players"].append({})
             tracks["referees"].append({})
+            
+            # 跳过初始化帧（已经在步骤1中处理）
+            if frame_idx == first_frame_with_players:
+                # 初始化帧已经处理，只需要存储结果
+                # 存储初始化帧的轨迹
+                for track in self.tracks:
+                    if track.lost_count == 0:
+                        bbox = track.bbox
+                        if bbox is not None:
+                            cls_id = track.class_id
+                            track_id = track.track_id
+                            if cls_id == cls_names_inv['player'] - 1:
+                                track_data = {
+                                    "bbox": bbox,
+                                    "position_pitch": track.position_pitch.tolist() if isinstance(track.position_pitch, np.ndarray) else track.position_pitch
+                                }
+                                if track.position_pixel is not None:
+                                    track_data['position_pixel'] = track.position_pixel
+                                if track.team is not None:
+                                    track_data['team'] = track.team
+                                if track.team_color is not None:
+                                    track_data['team_color'] = track.team_color
+                                tracks["players"][frame_num][track_id] = track_data
+                continue
             
             # 如果使用采样，只处理采样间隔的帧进行追踪；否则处理所有帧
             if self.use_sampling and frame_num % self.sample_interval != 0:
@@ -541,9 +647,9 @@ class Tracker:
                 for track in self.tracks:
                     track.predict()
                 
-                # 2. 匹配轨迹和检测
+                # 2. 匹配轨迹和检测（使用新的匹配算法，threshold=3.0米）
                 matches, unmatched_tracks, unmatched_dets = self._match_tracks_detections(
-                    self.tracks, detections_pitch, detections_info
+                    self.tracks, detections_pitch, detections_info, threshold=3.0
                 )
                 
                 # 调试信息（每30帧输出一次）
@@ -584,11 +690,23 @@ class Tracker:
                         new_track.team = det_info['team']
                     if 'team_color' in det_info:
                         new_track.team_color = det_info['team_color']
+                    # 初始化轨迹历史
+                    new_track.update(
+                        detections_pitch[det_idx],
+                        bbox=det_info.get('bbox'),
+                        position_pixel=det_info.get('position_pixel'),
+                        frame_num=frame_num,
+                        team=det_info.get('team'),
+                        team_color=det_info.get('team_color')
+                    )
                     self.tracks.append(new_track)
                     self.next_id += 1
-                
-                # 6. 删除丢失时间过长的轨迹
-                self.tracks = [t for t in self.tracks if t.lost_count <= self.track_buffer]
+            else:
+                # 没有检测，所有轨迹标记为丢失
+                for track in self.tracks:
+                    track.mark_missed()
+            
+            # 6. 不删除轨迹（保留所有轨迹，包括丢失的轨迹）
             
             # 7. 存储追踪结果（对所有帧，包括非采样帧）
             # 核心：基于场地坐标空间追踪，输出时必须包含场地坐标
@@ -653,79 +771,124 @@ class Tracker:
         
         return distance_matrix
     
-    def _match_tracks_detections(self, tracks, detections_pitch, detections_info):
+
+    def _match_tracks_detections(self, tracks, detections_pitch, detections_info, threshold=3.0):
         """
-        匹配轨迹和检测
+        新的匹配算法：基于距离和球队信息的智能匹配
+        
+        匹配规则：
+        1. 若球员坐标周围threshold米内没有除自身以外的其他球员，并入最近的轨迹
+        2. 若threshold范围内有其他球员，忽略对方球员，本方球员根据轨迹历史并入最近轨迹
         
         Args:
             tracks: 轨迹列表
-            detections_pitch: 检测的场地坐标列表
-            detections_info: 检测信息列表 [{bbox, position_pixel, class_id, confidence}, ...]
+            detections_pitch: 检测的场地坐标列表（单位：cm）
+            detections_info: 检测信息列表 [{bbox, position_pixel, class_id, team, ...}, ...]
+            threshold: 匹配距离阈值（米），默认3.0米
         
         Returns:
             matches: [(track_idx, det_idx), ...] 匹配对
             unmatched_tracks: [track_idx, ...] 未匹配的轨迹索引
             unmatched_dets: [det_idx, ...] 未匹配的检测索引
+        
+        注意：position_pitch的单位是cm，需要将阈值从米转换为cm
         """
         if len(tracks) == 0:
             return [], [], list(range(len(detections_pitch)))
         if len(detections_pitch) == 0:
             return [], list(range(len(tracks))), []
         
-        # 计算距离矩阵
-        distance_matrix = self._calculate_distance_matrix(tracks, detections_pitch)
+        # 将阈值从米转换为cm（position_pitch的单位是cm）
+        threshold_cm = threshold * 100.0
         
-        # 使用匈牙利算法进行最优匹配（更稳定的匹配方式）
-        if len(tracks) > 0 and len(detections_pitch) > 0:
-            # 创建成本矩阵（距离），对于超过阈值的距离设置为无穷大
-            cost_matrix = distance_matrix.copy()
-            cost_matrix[cost_matrix > self.distance_threshold_primary] = np.inf
-            
-            # 使用匈牙利算法找到最优匹配
-            track_indices, det_indices = linear_sum_assignment(cost_matrix)
-            
-            # 筛选出有效的匹配（距离小于阈值）
-            matches_primary = []
-            for track_idx, det_idx in zip(track_indices, det_indices):
-                if cost_matrix[track_idx, det_idx] < np.inf:
-                    matches_primary.append((track_idx, det_idx))
-            
-            # 找出未匹配的轨迹和检测
-            matched_tracks = set(track_idx for track_idx, _ in matches_primary)
-            matched_dets = set(det_idx for _, det_idx in matches_primary)
-            unmatched_tracks = [i for i in range(len(tracks)) if i not in matched_tracks]
-            unmatched_dets = [i for i in range(len(detections_pitch)) if i not in matched_dets]
-        else:
-            matches_primary = []
-            unmatched_tracks = list(range(len(tracks)))
-            unmatched_dets = list(range(len(detections_pitch)))
+        matches = []
+        matched_track_indices = set()
+        matched_det_indices = set()
         
-        # 第二轮匹配：次要阈值（仅对未匹配的轨迹）
-        matches_secondary = []
-        for track_idx in unmatched_tracks[:]:
-            candidates = []
-            for det_idx in unmatched_dets:
-                if distance_matrix[track_idx, det_idx] < self.distance_threshold_secondary:
-                    candidates.append((det_idx, distance_matrix[track_idx, det_idx]))
+        # 为每个检测找到匹配的轨迹
+        for det_idx, det_pitch in enumerate(detections_pitch):
+            det_info = detections_info[det_idx]
+            det_team = det_info.get('team')
             
-            if len(candidates) == 1:
-                det_idx = candidates[0][0]
-                matches_secondary.append((track_idx, det_idx))
-                unmatched_tracks.remove(track_idx)
-                unmatched_dets.remove(det_idx)
-            elif len(candidates) > 1:
-                # 多个候选，选择距离最近的
-                candidates.sort(key=lambda x: x[1])
-                det_idx = candidates[0][0]
-                matches_secondary.append((track_idx, det_idx))
-                unmatched_tracks.remove(track_idx)
-                unmatched_dets.remove(det_idx)
+            # 如果检测没有球队信息，跳过
+            if det_team is None:
+                continue
+            
+            # 找到该检测周围threshold米内的所有其他检测
+            nearby_detections = []
+            for other_det_idx, other_det_pitch in enumerate(detections_pitch):
+                if other_det_idx == det_idx:
+                    continue
+                distance = np.linalg.norm(np.array(det_pitch) - np.array(other_det_pitch))
+                if distance <= threshold_cm:
+                    nearby_detections.append((other_det_idx, other_det_pitch, detections_info[other_det_idx]))
+            
+            # 找到该检测周围threshold米内的所有轨迹
+            candidate_tracks = []
+            for track_idx, track in enumerate(tracks):
+                if track_idx in matched_track_indices:
+                    continue
+                
+                # 获取轨迹的最新位置（从轨迹历史缓存）
+                if len(track.trajectory_history) > 0:
+                    # 使用轨迹历史中的最新位置
+                    latest_position = track.trajectory_history[-1]['position_pitch']
+                else:
+                    # 如果没有历史，使用当前位置
+                    latest_position = track.position_pitch
+                
+                distance = np.linalg.norm(np.array(det_pitch) - np.array(latest_position))
+                
+                if distance <= threshold_cm:
+                    candidate_tracks.append((track_idx, track, distance, latest_position))
+            
+            # 匹配逻辑
+            if len(nearby_detections) == 0:
+                # 情况1：周围3米内没有其他球员，并入最近的轨迹
+                if len(candidate_tracks) > 0:
+                    # 按距离排序，选择最近的
+                    candidate_tracks.sort(key=lambda x: x[2])
+                    best_track_idx, best_track, best_distance, _ = candidate_tracks[0]
+                    
+                    matches.append((best_track_idx, det_idx))
+                    matched_track_indices.add(best_track_idx)
+                    matched_det_indices.add(det_idx)
+            else:
+                # 情况2：周围3米内有其他球员
+                # 检查是否有本方球员
+                same_team_detections = [d for d in nearby_detections if d[2].get('team') == det_team]
+                
+                if len(same_team_detections) > 0:
+                    # 有本方球员，需要根据轨迹历史匹配
+                    # 只考虑同队的轨迹
+                    same_team_tracks = [t for t in candidate_tracks if t[1].team == det_team]
+                    
+                    if len(same_team_tracks) > 0:
+                        # 按距离排序，选择最近的同队轨迹
+                        same_team_tracks.sort(key=lambda x: x[2])
+                        best_track_idx, best_track, best_distance, _ = same_team_tracks[0]
+                        
+                        matches.append((best_track_idx, det_idx))
+                        matched_track_indices.add(best_track_idx)
+                        matched_det_indices.add(det_idx)
+                else:
+                    # 周围只有对方球员，忽略对方球员，直接匹配最近的轨迹
+                    if len(candidate_tracks) > 0:
+                        candidate_tracks.sort(key=lambda x: x[2])
+                        best_track_idx, best_track, best_distance, _ = candidate_tracks[0]
+                        
+                        matches.append((best_track_idx, det_idx))
+                        matched_track_indices.add(best_track_idx)
+                        matched_det_indices.add(det_idx)
         
-        # 合并匹配结果
-        matches = matches_primary + matches_secondary
+        # 找出未匹配的轨迹和检测
+        unmatched_tracks = [i for i in range(len(tracks)) if i not in matched_track_indices]
+        unmatched_dets = [i for i in range(len(detections_pitch)) if i not in matched_det_indices]
         
         return matches, unmatched_tracks, unmatched_dets
     
+
+    # TODO:去除这个函数，只保留track_detections函数
     def get_object_tracks(self, frames, read_from_stub=False, stub_path=None, view_transformer=None):
         """
         获取目标跟踪结果（兼容接口，内部调用检测+追踪）
@@ -785,7 +948,7 @@ class Tracker:
         
         # 步骤3：基于检测结果进行追踪（不包含球队信息）
         tracks = self.track_detections(tracking_inputs, frames)
-        
+            
         # 保存缓存
         if stub_path is not None:
             with open(stub_path, 'wb') as f:

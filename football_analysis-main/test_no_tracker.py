@@ -42,7 +42,7 @@ from Module.visualizer.pitch_annotation_tool import draw_pitch, draw_points_on_p
 PROJECT_ROOT = os.path.dirname(os.path.abspath(__file__))
 
 # 输入视频路径
-INPUT_VIDEO_PATH = os.path.join(PROJECT_ROOT, 'IO', 'input_videos', 'test.mp4')
+INPUT_VIDEO_PATH = os.path.join(PROJECT_ROOT, 'IO', 'input_videos', 'test_10s.mp4')
 
 # 模型路径
 PLAYER_DETECTION_PATH = os.path.join(PROJECT_ROOT, 'Storage', 'models', 'Player_detection', 'football-player-detection.pt')
@@ -449,7 +449,7 @@ def main():
                         detections_info.append({
                             'bbox': bbox,
                             'position_pixel': position_pixel,
-                            'class_id': cls_names_inv['player'],  # 类别ID（player=0, referee=1, ball=2）
+                            'class_id': cls_names_inv['player'] - 1,  # 类别ID减1（Roboflow类别ID调整，匹配tracker_pitch的期望）
                             'confidence': 1.0,  # player_data中没有置信度，使用默认值
                             'team': team_id,
                             'team_color': team_color_bgr
@@ -467,6 +467,9 @@ def main():
         save_tracking_inputs(tracking_inputs, TRACKING_INPUTS_STUB_PATH)
     else:
         print("使用缓存数据，跳过检测和队伍分配")
+
+    #################
+    ## TODO: 生成的输入数据需要处理异常值
     
     # 为了兼容可视化部分，从tracking_inputs生成player_data（如果需要）
     # 注意：如果后续步骤不需要player_data，可以删除这部分
@@ -479,7 +482,7 @@ def main():
         player_data[frame_num] = {1: {}, 2: {}}
         
         for i, det_info in enumerate(detections_info):
-            if det_info.get('class_id') != 0:  # 只处理球员
+            if det_info.get('class_id') != -1:  # 只处理球员（class_id已减1，player=-1）
                 continue
             
             team_id = det_info.get('team')
