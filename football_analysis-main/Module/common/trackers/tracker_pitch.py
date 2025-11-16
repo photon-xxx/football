@@ -43,6 +43,7 @@ from typing import Optional
 sys.path.append('../../../')
 from Module.common.utils import get_foot_position
 from Storage.field_configs.soccer import SoccerPitchConfiguration
+from Module.visualizer.pitch_annotation_tool import draw_pitch
 
 
 class PitchKalmanFilter:
@@ -263,7 +264,8 @@ class PitchTrack:
         trajectory_color: Optional[sv.Color] = None,
         point_color: Optional[sv.Color] = None,
         padding: int = 50,
-        scale: float = 0.1
+        scale: float = 0.1,
+        max_frame_num: Optional[int] = None
     ) -> np.ndarray:
         """
         在球场图像上绘制轨迹
@@ -280,6 +282,7 @@ class PitchTrack:
             point_color: 当前位置点颜色，如果为None则根据team自动选择
             padding: 球场周围的填充像素，默认50
             scale: 球场尺寸缩放比例，默认0.1
+            max_frame_num: 最大帧号，如果指定则只绘制该帧及之前的轨迹历史，用于按时间逐步显示
         
         Returns:
             np.ndarray: 绘制后的球场图像
@@ -300,9 +303,15 @@ class PitchTrack:
         
         # 绘制轨迹历史路径
         if draw_trajectory and len(self.trajectory_history) > 1:
-            # 提取轨迹历史中的所有位置点
+            # 提取轨迹历史中的所有位置点（如果指定了max_frame_num，只提取该帧及之前的）
             trajectory_points = []
             for hist in self.trajectory_history:
+                # 如果指定了max_frame_num，只绘制该帧及之前的轨迹
+                if max_frame_num is not None:
+                    hist_frame = hist.get('frame_num')
+                    if hist_frame is not None and hist_frame > max_frame_num:
+                        continue
+                
                 pos = hist.get('position_pitch')
                 if pos is not None:
                     if isinstance(pos, (list, np.ndarray)):
@@ -359,12 +368,12 @@ class PitchTrack:
                         thickness=2
                     )
                     
-                    # 显示轨迹ID
+                    # 显示轨迹ID（透明背景，使用描边增强可读性）
                     if draw_track_id and self.track_id is not None:
                         text = str(self.track_id)
                         font = cv2.FONT_HERSHEY_SIMPLEX
-                        font_scale = 0.5
-                        text_thickness = 1
+                        font_scale = 0.6
+                        text_thickness = 2
                         
                         # 计算文本大小以居中显示
                         (text_width, text_height), baseline = cv2.getTextSize(
@@ -373,28 +382,280 @@ class PitchTrack:
                         text_x = scaled_point[0] - text_width // 2
                         text_y = scaled_point[1] + text_height // 2
                         
-                        # 绘制文本背景（白色矩形）
-                        cv2.rectangle(
-                            img=pitch_image,
-                            pt1=(text_x - 2, text_y - text_height - 2),
-                            pt2=(text_x + text_width + 2, text_y + baseline + 2),
-                            color=(255, 255, 255),
-                            thickness=-1
-                        )
+                        # 先绘制白色描边（增强可读性，模拟透明背景效果）
+                        for dx, dy in [(-1, -1), (-1, 0), (-1, 1), (0, -1), (0, 1), (1, -1), (1, 0), (1, 1)]:
+                            cv2.putText(
+                                img=pitch_image,
+                                text=text,
+                                org=(text_x + dx, text_y + dy),
+                                fontFace=font,
+                                fontScale=font_scale,
+                                color=(255, 255, 255),  # 白色描边
+                                thickness=text_thickness + 1,
+                                lineType=cv2.LINE_AA
+                            )
                         
-                        # 绘制文本
+                        # 再绘制黑色文本（在描边之上）
                         cv2.putText(
                             img=pitch_image,
                             text=text,
                             org=(text_x, text_y),
                             fontFace=font,
                             fontScale=font_scale,
-                            color=(0, 0, 0),
+                            color=(0, 0, 0),  # 黑色文本
                             thickness=text_thickness,
                             lineType=cv2.LINE_AA
                         )
         
         return pitch_image
+    
+    @staticmethod
+    def draw_tracks_as_video(
+        tracks_list: list,  # 每帧的轨迹列表 [[track1, track2, ...], [track1, track2, ...], ...]
+        output_path: str,
+        config: SoccerPitchConfiguration,
+        fps: int = 30,
+        draw_trajectory: bool = True,
+        draw_current_position: bool = True,
+        draw_track_id: bool = True,
+        point_radius: int = 10,
+        trajectory_thickness: int = 2,
+        padding: int = 50,
+        scale: float = 0.1,
+        frame_nums: Optional[list] = None  # 每帧对应的帧号列表，如果为None则使用索引
+    ) -> None:
+        """
+        将轨迹按帧绘制为视频
+        
+        Args:
+            tracks_list: 每帧的轨迹列表，格式为 [[frame0_tracks], [frame1_tracks], ...]
+                        每个元素是一个PitchTrack对象的列表
+            output_path: 输出视频文件路径
+            config: 球场配置对象
+            fps: 视频帧率，默认30
+            draw_trajectory: 是否绘制轨迹历史路径，默认True
+            draw_current_position: 是否绘制当前位置点，默认True
+            draw_track_id: 是否显示轨迹ID文本，默认True
+            point_radius: 当前位置点的半径（像素），默认10
+            trajectory_thickness: 轨迹线条粗细（像素），默认2
+            padding: 球场周围的填充像素，默认50
+            scale: 球场尺寸缩放比例，默认0.1
+            frame_nums: 每帧对应的帧号列表，如果为None则使用索引作为帧号
+        
+        Returns:
+            None，视频保存到output_path
+        """
+        if len(tracks_list) == 0:
+            print("⚠ 警告: 没有轨迹数据，无法生成视频")
+            return
+        
+        # 创建球场背景图像（用于确定视频尺寸）
+        pitch_image = draw_pitch(config=config, padding=padding, scale=scale)
+        height, width = pitch_image.shape[:2]
+        
+        # 创建视频写入器
+        fourcc = cv2.VideoWriter_fourcc(*'mp4v')
+        video_writer = cv2.VideoWriter(output_path, fourcc, fps, (width, height))
+        
+        if not video_writer.isOpened():
+            print(f"⚠ 错误: 无法创建视频文件 {output_path}")
+            return
+        
+        print(f"正在生成轨迹视频: {len(tracks_list)} 帧...")
+        
+        # 逐帧绘制
+        for frame_idx, frame_tracks in enumerate(tracks_list):
+            # 创建新的球场图像
+            frame_image = draw_pitch(config=config, padding=padding, scale=scale)
+            
+            # 获取当前帧号
+            if frame_nums is not None and frame_idx < len(frame_nums):
+                current_frame_num = frame_nums[frame_idx]
+            else:
+                # 尝试从轨迹历史中获取当前帧号
+                current_frame_num = None
+                if len(frame_tracks) > 0 and frame_tracks[0].trajectory_history:
+                    # 从轨迹历史中获取最新的帧号
+                    for hist in frame_tracks[0].trajectory_history:
+                        if hist.get('frame_num') is not None:
+                            current_frame_num = max(current_frame_num or 0, hist.get('frame_num'))
+                
+                # 如果没有找到帧号，使用frame_idx作为备用
+                if current_frame_num is None:
+                    current_frame_num = frame_idx
+            
+            # 按每帧读取轨迹信息：处理所有轨迹（包括丢失的）
+            for track in frame_tracks:
+                track_last_seen = getattr(track, 'last_seen_frame', None)
+                
+                # 获取当前帧的位置（用于绘制圆点和轨迹ID）
+                current_position = None
+                if track.position_pitch is not None:
+                    current_position = np.array(track.position_pitch)
+                
+                # 如果当前位置无效，跳过
+                if current_position is None or len(current_position) != 2 or np.isnan(current_position).any():
+                    continue
+                
+                # 判断轨迹在该帧是否仍然活跃
+                is_track_active = (track_last_seen is None or current_frame_num <= track_last_seen)
+                
+                # 获取轨迹历史中到当前帧为止的所有位置点（用于绘制轨迹线）
+                # 对于丢失的轨迹，只绘制到 last_seen_frame 为止的轨迹线
+                trajectory_points = []
+                for hist in track.trajectory_history:
+                    hist_frame = hist.get('frame_num')
+                    # 只包含当前帧及之前帧的位置
+                    if hist_frame is not None and hist_frame <= current_frame_num:
+                        # 如果轨迹已丢失，只绘制到 last_seen_frame 为止的轨迹线
+                        if not is_track_active and track_last_seen is not None and hist_frame > track_last_seen:
+                            continue
+                        pos = hist.get('position_pitch')
+                        if pos is not None:
+                            if isinstance(pos, (list, np.ndarray)):
+                                pos_array = np.array(pos)
+                                if len(pos_array) == 2 and not np.isnan(pos_array).any():
+                                    trajectory_points.append((hist_frame, pos_array))
+                
+                # 按帧号排序
+                trajectory_points.sort(key=lambda x: x[0])
+                
+                # 根据team选择颜色
+                if track.team == 1:
+                    track_color = sv.Color.RED
+                elif track.team == 2:
+                    track_color = sv.Color.BLUE
+                else:
+                    track_color = sv.Color.WHITE
+                
+                # 绘制轨迹历史路径（之前帧的位置连续标注为轨迹线）
+                if draw_trajectory and len(trajectory_points) > 1:
+                    # 提取位置点
+                    path_points = [point[1] for point in trajectory_points]
+                    path_points = np.array(path_points)
+                    
+                    # 将路径中的每个点按比例缩放并添加填充偏移
+                    scaled_path = [
+                        (
+                            int(point[0] * scale) + padding,
+                            int(point[1] * scale) + padding
+                        )
+                        for point in path_points
+                    ]
+                    
+                    # 连接相邻点绘制路径
+                    for i in range(len(scaled_path) - 1):
+                        cv2.line(
+                            img=frame_image,
+                            pt1=scaled_path[i],
+                            pt2=scaled_path[i + 1],
+                            color=track_color.as_bgr(),
+                            thickness=trajectory_thickness
+                        )
+                
+                # 绘制当前帧的位置为圆点
+                # 对于丢失的轨迹，仍然绘制最后可见位置的点
+                if draw_current_position:
+                    scaled_point = (
+                        int(current_position[0] * scale) + padding,
+                        int(current_position[1] * scale) + padding
+                    )
+                    
+                    # 绘制填充的圆（点的内部）
+                    # 如果轨迹已丢失，使用半透明或不同的样式
+                    if not is_track_active:
+                        # 丢失的轨迹：使用半透明或虚线边框
+                        overlay = frame_image.copy()
+                        cv2.circle(
+                            img=overlay,
+                            center=scaled_point,
+                            radius=point_radius,
+                            color=track_color.as_bgr(),
+                            thickness=-1
+                        )
+                        cv2.addWeighted(overlay, 0.5, frame_image, 0.5, 0, frame_image)
+                    else:
+                        # 活跃的轨迹：正常绘制
+                        cv2.circle(
+                            img=frame_image,
+                            center=scaled_point,
+                            radius=point_radius,
+                            color=track_color.as_bgr(),
+                            thickness=-1  # -1表示填充整个圆
+                        )
+                    
+                    # 绘制边框圆（点的边缘）
+                    cv2.circle(
+                        img=frame_image,
+                        center=scaled_point,
+                        radius=point_radius,
+                        color=sv.Color.BLACK.as_bgr(),
+                        thickness=2
+                    )
+                    
+                    # 标注轨迹号（在当前帧位置）
+                    # 对于丢失的轨迹，仍然显示轨迹ID，方便识别
+                    if draw_track_id and track.track_id is not None:
+                        text = str(track.track_id)
+                        font = cv2.FONT_HERSHEY_SIMPLEX
+                        font_scale = 0.6
+                        text_thickness = 2
+                        
+                        # 计算文本大小以居中显示
+                        (text_width, text_height), baseline = cv2.getTextSize(
+                            text, font, font_scale, text_thickness
+                        )
+                        text_x = scaled_point[0] - text_width // 2
+                        text_y = scaled_point[1] + text_height // 2
+                        
+                        # 先绘制白色描边（增强可读性，透明背景效果）
+                        for dx, dy in [(-1, -1), (-1, 0), (-1, 1), (0, -1), (0, 1), (1, -1), (1, 0), (1, 1)]:
+                            cv2.putText(
+                                img=frame_image,
+                                text=text,
+                                org=(text_x + dx, text_y + dy),
+                                fontFace=font,
+                                fontScale=font_scale,
+                                color=(255, 255, 255),  # 白色描边
+                                thickness=text_thickness + 1,
+                                lineType=cv2.LINE_AA
+                            )
+                        
+                        # 再绘制黑色文本（在描边之上）
+                        cv2.putText(
+                            img=frame_image,
+                            text=text,
+                            org=(text_x, text_y),
+                            fontFace=font,
+                            fontScale=font_scale,
+                            color=(0, 0, 0),  # 黑色文本
+                            thickness=text_thickness,
+                            lineType=cv2.LINE_AA
+                        )
+            
+            # 添加帧号文本（使用真实帧号）
+            frame_text = f"Frame: {current_frame_num}"
+            cv2.putText(
+                img=frame_image,
+                text=frame_text,
+                org=(10, 30),
+                fontFace=cv2.FONT_HERSHEY_SIMPLEX,
+                fontScale=1.0,
+                color=(255, 255, 255),
+                thickness=2,
+                lineType=cv2.LINE_AA
+            )
+            
+            # 写入视频帧
+            video_writer.write(frame_image)
+            
+            # 显示进度
+            if (frame_idx + 1) % 30 == 0:
+                print(f"  已处理 {frame_idx + 1}/{len(tracks_list)} 帧")
+        
+        # 释放视频写入器
+        video_writer.release()
+        print(f"✓ 轨迹视频已保存到: {output_path}")
 
 
 class Tracker:

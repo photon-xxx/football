@@ -14,7 +14,7 @@ import os
 import sys
 from collections import defaultdict, Counter
 
-sys.path.append('../../../')
+sys.path.append('../../../../')
 
 from Module.common.trackers.tracker_pitch import Tracker, PitchTrack
 

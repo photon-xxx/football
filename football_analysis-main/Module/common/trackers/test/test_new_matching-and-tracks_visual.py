@@ -15,7 +15,7 @@ import os
 import sys
 import cv2
 
-sys.path.append('../../../')
+sys.path.append('../../../../')
 
 from Module.common.trackers.tracker_pitch import Tracker, PitchTrack
 from Module.visualizer.pitch_annotation_tool import draw_pitch
@@ -361,6 +361,90 @@ def test_full_workflow():
     output_path = os.path.join(output_dir, 'test_tracks_visualization.png')
     cv2.imwrite(output_path, pitch_image)
     print(f"  轨迹可视化已保存到: {output_path}")
+    
+    # 生成轨迹可视化视频
+    print(f"\n生成轨迹可视化视频...")
+    
+    # 组织每帧的轨迹数据
+    # 获取所有帧号范围
+    frame_nums = [inp['frame_num'] for inp in test_inputs]
+    min_frame = min(frame_nums)
+    max_frame = max(frame_nums)
+    
+    # 为每一帧收集该帧存在的轨迹
+    # 方法：从轨迹的trajectory_history中按帧号组织数据
+    tracks_by_frame = []
+    frame_nums_list = []  # 保存每帧对应的真实帧号
+    
+    for frame_num in range(min_frame, max_frame + 1):
+        frame_tracks = []
+        
+        # 遍历所有轨迹，包含所有轨迹（包括丢失的）
+        for track in tracker.tracks:
+            track_start_frame = track.frame_num
+            track_end_frame = track.last_seen_frame
+            
+            # 如果当前帧在轨迹的起始帧之前，跳过
+            if frame_num < track_start_frame:
+                continue
+            
+            # 确定该帧的位置：
+            # - 如果轨迹在该帧存在（frame_num <= last_seen_frame），使用该帧的位置
+            # - 如果轨迹在该帧已丢失（frame_num > last_seen_frame），使用最后可见帧的位置
+            frame_position = None
+            
+            if frame_num <= track_end_frame:
+                # 轨迹在该帧仍然活跃，尝试从历史中获取该帧的位置
+                for hist in track.trajectory_history:
+                    if hist.get('frame_num') == frame_num:
+                        frame_position = hist.get('position_pitch')
+                        break
+                # 如果没找到，使用轨迹的当前位置
+                if frame_position is None:
+                    frame_position = track.position_pitch.copy() if track.position_pitch is not None else [0, 0]
+            else:
+                # 轨迹在该帧已丢失，使用最后可见帧的位置
+                # 从历史中找到最后可见帧的位置
+                last_position = None
+                for hist in reversed(track.trajectory_history):
+                    if hist.get('frame_num') == track_end_frame:
+                        last_position = hist.get('position_pitch')
+                        break
+                if last_position is not None:
+                    frame_position = last_position
+                else:
+                    # 如果历史中没有，使用轨迹的当前位置
+                    frame_position = track.position_pitch.copy() if track.position_pitch is not None else [0, 0]
+            
+            # 创建轨迹副本用于绘制
+            frame_track = PitchTrack(
+                position_pitch=frame_position,
+                class_id=track.class_id,
+                frame_num=frame_num,
+                track_id=track.track_id,
+                dt=track.kalman_filter.dt
+            )
+            frame_track.team = track.team
+            frame_track.team_color = track.team_color
+            frame_track.last_seen_frame = track.last_seen_frame  # 保留最后可见帧信息
+            frame_track.trajectory_history = track.trajectory_history.copy()  # 保留完整历史
+            frame_tracks.append(frame_track)
+        
+        tracks_by_frame.append(frame_tracks)
+        frame_nums_list.append(frame_num)  # 保存对应的帧号
+    
+    # 调用视频生成方法
+    video_output_path = os.path.join(output_dir, 'test_tracks_visualization.mp4')
+    PitchTrack.draw_tracks_as_video(
+        tracks_list=tracks_by_frame,
+        output_path=video_output_path,
+        config=config,
+        fps=30,
+        draw_trajectory=True,
+        draw_current_position=True,
+        draw_track_id=True,
+        frame_nums=frame_nums_list  # 传递帧号列表，用于按时间逐步显示轨迹
+    )
     
     print(f"✓ 通过: 完整流程测试完成")
 

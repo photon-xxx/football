@@ -10,7 +10,7 @@ import os
 import sys
 
 # 添加项目路径
-sys.path.append('../../../')
+sys.path.append('../../../../')
 
 from Module.common.trackers.tracker_pitch import PitchKalmanFilter, PitchTrack, Tracker
 
