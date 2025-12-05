@@ -15,7 +15,8 @@ sys.path.append('../../../../')
 from Module.common.trackers.tracker_pitch import PitchKalmanFilter, PitchTrack, Tracker
 
 # 配置路径
-PROJECT_ROOT = os.path.dirname(os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__)))))
+# 测试文件在 Module/common/trackers/test/，需要向上5层到达项目根目录
+PROJECT_ROOT = os.path.dirname(os.path.dirname(os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))))
 TRACKING_INPUTS_PATH = os.path.join(PROJECT_ROOT, 'Module', 'common', 'trackers', 'tracking_inputs_stub.pkl')
 MODEL_PATH = os.path.join(PROJECT_ROOT, 'Storage', 'models', 'Player_detection', 'football-player-detection.pt')
 

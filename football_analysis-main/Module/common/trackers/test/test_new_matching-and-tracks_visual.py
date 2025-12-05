@@ -17,12 +17,14 @@ import cv2
 
 sys.path.append('../../../../')
 
-from Module.common.trackers.tracker_pitch import Tracker, PitchTrack
+from Module.common.trackers.tracker_pitch import Tracker
 from Module.visualizer.pitch_annotation_tool import draw_pitch
+from Module.visualizer.track_visualizer import visualize_tracks_as_video
 from Storage.field_configs.soccer import SoccerPitchConfiguration
 
 # 配置路径
-PROJECT_ROOT = os.path.dirname(os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__)))))
+# 测试文件在 Module/common/trackers/test/，需要向上5层到达项目根目录
+PROJECT_ROOT = os.path.dirname(os.path.dirname(os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))))
 TRACKING_INPUTS_PATH = os.path.join(PROJECT_ROOT, 'Module', 'common', 'trackers', 'tracking_inputs_stub.pkl')
 MODEL_PATH = os.path.join(PROJECT_ROOT, 'Storage', 'models', 'Player_detection', 'football-player-detection.pt')
 
@@ -262,6 +264,90 @@ def test_track_deletion():
     print(f"✓ 通过: 轨迹删除成功，删除了长度<5帧的轨迹")
 
 
+def output_frame_range_track_details(tracker, tracking_inputs, start_frame, end_frame, fps=30.0):
+    """
+    输出选定帧范围的详细轨迹信息
+    
+    Args:
+        tracker: Tracker实例，已完成追踪
+        tracking_inputs: 追踪输入数据列表
+        start_frame: 起始帧号
+        end_frame: 结束帧号
+        fps: 视频帧率，默认30.0
+    """
+    print(f"\n" + "=" * 80)
+    print(f"帧 {start_frame} 到 {end_frame} 的详细轨迹信息")
+    print("=" * 80)
+    
+    # 计算时间范围
+    start_time_seconds = start_frame / fps
+    end_time_seconds = end_frame / fps
+    start_minutes = int(start_time_seconds // 60)
+    start_secs = start_time_seconds % 60
+    end_minutes = int(end_time_seconds // 60)
+    end_secs = end_time_seconds % 60
+    
+    print(f"时间范围: {start_minutes}分{start_secs:.2f}秒 - {end_minutes}分{end_secs:.2f}秒")
+    print(f"帧号范围: {start_frame} - {end_frame}")
+    
+    # 找到这个时间段内的所有轨迹
+    time_range_tracks = []
+    for track in tracker.tracks:
+        # 检查轨迹是否在这个时间段内存在
+        track_start = track.frame_num
+        track_end = track.last_seen_frame
+        
+        if track_start <= end_frame and track_end >= start_frame:
+            time_range_tracks.append(track)
+    
+    print(f"\n该时间段内的轨迹数: {len(time_range_tracks)}")
+    
+    # 输出每个轨迹在这个时间段内的完整信息
+    print(f"\n" + "=" * 80)
+    print("各轨迹在该时间段内的完整信息")
+    print("=" * 80)
+    
+    for track in sorted(time_range_tracks, key=lambda t: t.track_id):
+        print(f"\n轨迹 ID {track.track_id} (队伍{track.team}):")
+        print(f"  起始帧: {track.frame_num}, 最后可见帧: {track.last_seen_frame}")
+        print(f"  存在时间: {track.last_seen_frame - track.frame_num + 1} 帧")
+        print(f"  丢失计数: {track.lost_count}")
+        
+        # 提取该时间段内的轨迹历史
+        time_range_history = [
+            hist for hist in track.trajectory_history
+            if hist.get('frame_num') is not None and start_frame <= hist.get('frame_num') <= end_frame
+        ]
+        
+        if len(time_range_history) > 0:
+            print(f"  该时间段内的位置点 ({len(time_range_history)} 个):")
+            for hist in time_range_history:
+                frame_num = hist.get('frame_num')
+                pos = hist.get('position_pitch')
+                vel = hist.get('velocity', [0, 0])
+                speed = hist.get('speed', 0)
+                bbox = hist.get('bbox')
+                position_pixel = hist.get('position_pixel')
+                
+                time_seconds = frame_num / fps
+                minutes = int(time_seconds // 60)
+                seconds = time_seconds % 60
+                
+                # 输出简化格式：帧号、时间、位置、速度、检测框、像素位置
+                output_line = f"    帧{frame_num} ({minutes}分{seconds:.2f}秒): 位置=({pos[0]:.2f}, {pos[1]:.2f})米, "
+                output_line += f"速度=({vel[0]:.2f}, {vel[1]:.2f})米/帧, 速度大小={speed:.2f}米/帧"
+                
+                if bbox is not None:
+                    output_line += f", 检测框={bbox}"
+                
+                if position_pixel is not None:
+                    output_line += f", 像素位置={position_pixel}"
+                
+                print(output_line)
+        else:
+            print(f"  该时间段内无位置记录")
+
+
 def test_full_workflow():
     """测试5: 完整流程测试（使用真实数据）"""
     print("\n" + "=" * 80)
@@ -339,6 +425,12 @@ def test_full_workflow():
         print(f"  最大长度: {max(track_lengths)}帧")
         print(f"  长度>=5帧的轨迹数: {sum(1 for l in track_lengths if l >= 5)}")
     
+    # 输出3分14秒到3分16秒的详细轨迹信息
+    start_frame = int(104)
+    end_frame = int(106)
+    
+    output_frame_range_track_details(tracker, test_inputs, start_frame, end_frame)
+    
     # 可视化轨迹
     print(f"\n生成轨迹可视化...")
     config = SoccerPitchConfiguration()
@@ -365,85 +457,20 @@ def test_full_workflow():
     # 生成轨迹可视化视频
     print(f"\n生成轨迹可视化视频...")
     
-    # 组织每帧的轨迹数据
     # 获取所有帧号范围
     frame_nums = [inp['frame_num'] for inp in test_inputs]
-    min_frame = min(frame_nums)
-    max_frame = max(frame_nums)
     
-    # 为每一帧收集该帧存在的轨迹
-    # 方法：从轨迹的trajectory_history中按帧号组织数据
-    tracks_by_frame = []
-    frame_nums_list = []  # 保存每帧对应的真实帧号
-    
-    for frame_num in range(min_frame, max_frame + 1):
-        frame_tracks = []
-        
-        # 遍历所有轨迹，包含所有轨迹（包括丢失的）
-        for track in tracker.tracks:
-            track_start_frame = track.frame_num
-            track_end_frame = track.last_seen_frame
-            
-            # 如果当前帧在轨迹的起始帧之前，跳过
-            if frame_num < track_start_frame:
-                continue
-            
-            # 确定该帧的位置：
-            # - 如果轨迹在该帧存在（frame_num <= last_seen_frame），使用该帧的位置
-            # - 如果轨迹在该帧已丢失（frame_num > last_seen_frame），使用最后可见帧的位置
-            frame_position = None
-            
-            if frame_num <= track_end_frame:
-                # 轨迹在该帧仍然活跃，尝试从历史中获取该帧的位置
-                for hist in track.trajectory_history:
-                    if hist.get('frame_num') == frame_num:
-                        frame_position = hist.get('position_pitch')
-                        break
-                # 如果没找到，使用轨迹的当前位置
-                if frame_position is None:
-                    frame_position = track.position_pitch.copy() if track.position_pitch is not None else [0, 0]
-            else:
-                # 轨迹在该帧已丢失，使用最后可见帧的位置
-                # 从历史中找到最后可见帧的位置
-                last_position = None
-                for hist in reversed(track.trajectory_history):
-                    if hist.get('frame_num') == track_end_frame:
-                        last_position = hist.get('position_pitch')
-                        break
-                if last_position is not None:
-                    frame_position = last_position
-                else:
-                    # 如果历史中没有，使用轨迹的当前位置
-                    frame_position = track.position_pitch.copy() if track.position_pitch is not None else [0, 0]
-            
-            # 创建轨迹副本用于绘制
-            frame_track = PitchTrack(
-                position_pitch=frame_position,
-                class_id=track.class_id,
-                frame_num=frame_num,
-                track_id=track.track_id,
-                dt=track.kalman_filter.dt
-            )
-            frame_track.team = track.team
-            frame_track.team_color = track.team_color
-            frame_track.last_seen_frame = track.last_seen_frame  # 保留最后可见帧信息
-            frame_track.trajectory_history = track.trajectory_history.copy()  # 保留完整历史
-            frame_tracks.append(frame_track)
-        
-        tracks_by_frame.append(frame_tracks)
-        frame_nums_list.append(frame_num)  # 保存对应的帧号
-    
-    # 调用视频生成方法
+    # 使用封装的可视化模块生成视频
     video_output_path = os.path.join(output_dir, 'test_tracks_visualization.mp4')
-    PitchTrack.draw_tracks_as_video(
-        tracks_list=tracks_by_frame,
+    visualize_tracks_as_video(
+        tracks=tracker.tracks,
+        frame_nums=frame_nums,
         output_path=video_output_path,
         config=config,
         fps=30,
         draw_trajectory=True,
         draw_current_position=True,
-        draw_track_id=True,
-        frame_nums=frame_nums_list  # 传递帧号列表，用于按时间逐步显示轨迹
+        draw_track_id=True
     )
     
     print(f"✓ 通过: 完整流程测试完成")

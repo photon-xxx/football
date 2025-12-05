@@ -1,19 +1,25 @@
 import os
 import cv2
-# 让 Python 走你的 VPN 本地代理
-os.environ["HTTP_PROXY"] = "http://127.0.0.1:10809"
-os.environ["HTTPS_PROXY"] = "http://127.0.0.1:10809"
+import sys
+
+# 获取项目根目录
+current_file_dir = os.path.dirname(os.path.abspath(__file__))
+project_root = os.path.dirname(os.path.dirname(current_file_dir))
+
+# 让 Python 走你的 VPN 本地代理（如果需要，请根据实际情况修改）
+# os.environ["HTTP_PROXY"] = "http://127.0.0.1:10809"
+# os.environ["HTTPS_PROXY"] = "http://127.0.0.1:10809"
 
 
 # # import a utility function for loading Roboflow models
 from inference import get_model
 
 # define the image url to use for inference
-image = "E:\Soccer\\football\\football_analysis-main\IO\input_videos\screen.jpg"
+image = os.path.join(project_root, 'IO', 'input_videos', 'screen.jpg')
 
 # load a pre-trained yolov8n model
 
-cap = cv2.VideoCapture("/IO/input_videos/test.mp4")
+cap = cv2.VideoCapture(os.path.join(project_root, 'IO', 'input_videos', 'test.mp4'))
 out = cv2.VideoWriter("output.mp4",
                       cv2.VideoWriter_fourcc(*"mp4v"),
                       cap.get(cv2.CAP_PROP_FPS),
@@ -32,7 +38,7 @@ model = get_model(
 )
 
 # run inference on our chosen image, image can be a url, a numpy array, a PIL image, etc.
-results = model.infer("E:\Soccer\\football\\football_analysis-main\IO\input_videos\\test.mp4")
+results = model.infer(os.path.join(project_root, 'IO', 'input_videos', 'test.mp4'))
 
 for pred in results.predictions:
     x1 = int(pred.x - pred.width / 2)

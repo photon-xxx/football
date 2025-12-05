@@ -1,5 +1,19 @@
 # Football Analysis Project
 
+## 📚 核心模块协作文档
+
+**重要**: 如果您需要理解 `view_transformer`、`team_assigner`、`trackers` 三个核心模块的协作逻辑，请查看：
+
+👉 **[核心模块协作逻辑文档](doc/核心模块协作逻辑.md)**
+
+该文档详细说明了：
+- 三个模块的功能和接口
+- 模块之间的数据流
+- 完整的协作流程示例
+- 常见问题解答
+
+---
+
 ## Introduction
 The goal of this project is to detect and track players, referees, and footballs in a video using YOLO, one of the best AI object detection models available. We will also train the model to improve its performance. Additionally, we will assign players to teams using a deep learning-based approach with SigLIP vision model for feature extraction, UMAP for dimensionality reduction, and KMeans for clustering. With this information, we can measure a team's ball acquisition percentage in a match. We will also use optical flow to measure camera movement between frames, enabling us to accurately measure a player's movement. Furthermore, we will implement perspective transformation to represent the scene's depth and perspective, allowing us to measure a player's movement in meters rather than pixels. Finally, we will calculate a player's speed and the distance covered. This project covers various concepts and addresses real-world problems, making it suitable for both beginners and experienced machine learning engineers.
 
@@ -266,12 +280,49 @@ from Module.common.team_assigner import TeamAssigner
 # 初始化（支持GPU加速）
 team_assigner = TeamAssigner(device="cuda", batch_size=32)
 
+# 可选：启用分割功能（去除背景，可能提高分类准确性）
+team_assigner = TeamAssigner(
+    device="cuda", 
+    batch_size=32,
+    use_segmentation=True  # 启用边缘检测/分割功能
+)
+
 # 在第一帧初始化分类器
 team_assigner.assign_team_color(first_frame, player_detections)
 
 # 为每个球员分配队伍
 team_id = team_assigner.get_player_team(frame, player_bbox, player_id)
 ```
+
+### 分割功能（去除背景）
+
+**新增功能**：通过边缘检测和颜色分割，从检测框中抠出运动员，去除背景干扰。
+
+**启用方法**：
+```python
+team_assigner = TeamAssigner(use_segmentation=True)
+```
+
+**算法原理**：
+1. 基于HSV颜色空间检测绿色区域（草地背景）
+2. 使用形态学操作去除噪声
+3. 提取最大轮廓（假设是运动员）
+4. 创建掩码并应用到原图，背景设为黑色
+
+**优点**：
+- ✅ **减少背景干扰**：去除草地、其他球员、广告牌等背景元素
+- ✅ **提高分类准确性**：只保留运动员特征，减少噪声影响
+- ✅ **适合草地背景**：针对足球场绿色草地优化
+
+**缺点**：
+- ⚠️ **计算开销增加**：每帧需要额外的图像处理（约增加10-20%处理时间）
+- ⚠️ **可能误分割**：复杂背景、相似颜色可能导致分割不准确
+- ⚠️ **依赖背景颜色**：主要针对绿色草地，其他背景可能效果不佳
+
+**建议**：
+- 如果分类准确率已经足够，可以不启用（默认关闭）
+- 如果遇到背景干扰导致分类错误，可以尝试启用
+- 对于非草地背景，可能需要调整HSV颜色范围参数
 
 ### 依赖要求
 
@@ -374,13 +425,87 @@ python test_no_tracker.py
 **详细分析**：请参考 [`Module/common/trackers/基于球场坐标跟踪的可行性分析.md`](Module/common/trackers/基于球场坐标跟踪的可行性分析.md)
 
 ## Requirements
-To run this project, you need to have the following requirements installed:
-- Python 3.x
-- ultralytics
-- supervision
-- OpenCV
-- NumPy
-- Matplotlib
-- Pandas
-- scipy (for signal processing)
-- deep-oc-sort (for BoTSORT tracker ReID features)
+
+### 快速安装（推荐）
+
+项目已提供完整的 `requirements.txt` 文件，可以直接安装所有依赖：
+
+```bash
+# 1. 创建虚拟环境（推荐）
+python -m venv venv
+
+# 2. 激活虚拟环境
+# Windows:
+venv\Scripts\activate
+# Linux/Mac:
+source venv/bin/activate
+
+# 3. 安装PyTorch（根据您的系统选择）
+# CPU版本：
+pip install torch torchvision torchaudio
+
+# GPU版本（CUDA 11.8）：
+pip install torch torchvision torchaudio --index-url https://download.pytorch.org/whl/cu118
+
+# GPU版本（CUDA 12.1）：
+pip install torch torchvision torchaudio --index-url https://download.pytorch.org/whl/cu121
+
+# 4. 安装其他依赖
+pip install -r requirements.txt
+```
+
+### 依赖包列表
+
+项目需要以下主要依赖包：
+
+- **Python**: >= 3.8, < 3.12（推荐 3.9 或 3.10）
+- **ultralytics**: YOLO目标检测模型
+- **supervision**: 视频处理和标注工具
+- **opencv-contrib-python**: 计算机视觉库（扩展版）
+- **numpy**: 数值计算库
+- **matplotlib**: 数据可视化
+- **pandas**: 数据处理和分析
+- **scipy**: 信号处理和科学计算
+- **torch**: PyTorch深度学习框架
+- **transformers**: HuggingFace Transformers（用于SigLIP模型）
+- **umap-learn**: UMAP降维算法
+- **scikit-learn**: 机器学习库（KMeans聚类）
+- **deep-oc-sort**: BoTSORT跟踪器的ReID特征提取
+- **tqdm**: 进度条显示
+
+完整依赖列表和版本要求请查看 `requirements.txt` 文件。
+
+### 服务器部署说明
+
+1. **系统要求**：
+   - Python 3.8-3.11
+   - 如果使用GPU：CUDA 11.8+ 或 12.1+，以及对应的cuDNN
+
+2. **安装步骤**：
+   ```bash
+   # 克隆或上传项目到服务器
+   cd football_analysis-main
+   
+   # 创建虚拟环境
+   python -m venv venv
+   source venv/bin/activate  # Linux/Mac
+   # 或 venv\Scripts\activate  # Windows
+   
+   # 安装PyTorch（根据服务器CUDA版本选择）
+   pip install torch torchvision torchaudio --index-url https://download.pytorch.org/whl/cu118
+   
+   # 安装其他依赖
+   pip install -r requirements.txt
+   ```
+
+3. **模型文件准备**：
+   - 确保所有模型文件已下载到 `Storage/models/` 目录
+   - YOLO模型：`Storage/models/yolo/` 和 `Storage/models/Player_detection/`
+   - 关键点检测模型：`Storage/models/KeyPoint_detection/`
+   - SigLIP模型：`Storage/models/siglip/`
+   - ReID模型：`Storage/models/reid/`
+
+4. **验证安装**：
+   ```bash
+   python check_dependencies.py  # 检查依赖包是否正确安装
+   ```

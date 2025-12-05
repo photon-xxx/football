@@ -1,0 +1,14 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<project version="4">
+  <component name="WebServers">
+    <option name="servers">
+      <webServer id="2629870f-cee7-45fc-a7c7-9d590d987b63" name="4090*4">
+        <fileTransfer accessType="SFTP" host="connect.bjb1.seetacloud.com" port="47316" sshConfigId="e5c21d6d-b9be-44aa-b392-bbc6cfc92c31" sshConfig="root@connect.bjb1.seetacloud.com:47316 password">
+          <advancedOptions>
+            <advancedOptions dataProtectionLevel="Private" keepAliveTimeout="0" passiveMode="true" shareSSLContext="true" />
+          </advancedOptions>
+        </fileTransfer>
+      </webServer>
+    </option>
+  </component>
+</project>

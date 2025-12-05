@@ -21,7 +21,7 @@ INPUT_VIDEO_PATH = os.path.join(PROJECT_ROOT, 'IO', 'input_videos', 'test.mp4')
 # 模型路径
 YOLO_MODEL_PATH = os.path.join(PROJECT_ROOT, 'Storage', 'models', 'yolo', 'best.pt')
 PLAYER_DETECTION_PATH = os.path.join(PROJECT_ROOT, 'Storage', 'models', 'Player_detection', 'football-player-detection.pt')
-PITCH_DETECTION_PATH = "E:/Soccer/football/football_analysis-main/Storage/models/KeyPoint_detection/football-pitch-detection.pt"
+PITCH_DETECTION_PATH = os.path.join(PROJECT_ROOT, 'Storage', 'models', 'KeyPoint_detection', 'football-pitch-detection.pt')
 # 球场配置路径
 CONFIG = SoccerPitchConfiguration()
 

@@ -745,7 +745,12 @@ class Tracker:
             frames: 视频帧列表（可选，用于处理球检测）
         
         Returns:
-            dict: 追踪结果，格式与get_object_tracks兼容
+            tracks: 追踪结果字典
+                {
+                    "players": [{track_id: {"bbox": [x1,y1,x2,y2], "team": 1, "team_color": [...]}}, ...],
+                    "referees": [{track_id: {"bbox": [x1,y1,x2,y2]}}, ...],
+                    "ball": [{1: {"bbox": [x1,y1,x2,y2]}}, ...]
+                }
         """
         # 初始化输出结构
         tracks = {
@@ -966,10 +971,8 @@ class Tracker:
                 # 没有检测，所有轨迹标记为丢失
                 for track in self.tracks:
                     track.mark_missed()
-            
-            # 6. 不删除轨迹（保留所有轨迹，包括丢失的轨迹）
-            
-            # 7. 存储追踪结果（对所有帧，包括非采样帧）
+                
+            # 6. 存储追踪结果（对所有帧，包括非采样帧）
             # 核心：基于场地坐标空间追踪，输出时必须包含场地坐标
             # 修改：存储所有未丢失的轨迹，即使未确认（提高追踪连续性）
             for track in self.tracks:
@@ -995,7 +998,60 @@ class Tracker:
                             tracks["players"][frame_num][track_id] = track_data
                         elif cls_id == cls_names_inv['referee'] - 1:
                             tracks["referees"][frame_num][track_id] = {"bbox": bbox}
+            
+        # 删除不符合条件的轨迹（在最终统计前）
+        # 计算总帧数
+        if len(tracking_inputs) > 0:
+            first_frame = tracking_inputs[0]['frame_num']
+            last_frame = tracking_inputs[-1]['frame_num']
+            total_frames = last_frame - first_frame + 1
+            min_track_duration = total_frames * 0.2  # 最小存在时间：总帧数的20%
+        else:
+            total_frames = 0
+            min_track_duration = 0
         
+        tracks_to_remove = []
+        for track_idx, track in enumerate(self.tracks):
+            # 计算轨迹存在时间
+            track_duration = track.last_seen_frame - track.frame_num + 1
+            
+            # 条件1：删除存在时间小于总帧数20%的轨迹
+            if track_duration < min_track_duration:
+                tracks_to_remove.append(track_idx)
+                continue
+            
+            # 条件2：删除一直不动的轨迹
+            if len(track.trajectory_history) > 1:
+                # 获取轨迹历史中的所有位置
+                positions = [hist['position_pitch'] for hist in track.trajectory_history if hist.get('position_pitch') is not None]
+                if len(positions) > 1:
+                    positions_array = np.array(positions)
+                    # 计算位置的范围（最小值和最大值）
+                    min_pos = np.min(positions_array, axis=0)
+                    max_pos = np.max(positions_array, axis=0)
+                    # 计算范围的对角线距离（更高效的方法）
+                    # 注意：position_pitch的单位是米
+                    range_distance = np.linalg.norm(max_pos - min_pos)
+                    
+                    # 如果位置范围小于10cm，认为轨迹一直不动
+                    if range_distance < 10:  
+                        tracks_to_remove.append(track_idx)
+                        continue
+            
+            # 条件3：删除存在帧数小于30帧的轨迹
+            if track_duration < 30:
+                tracks_to_remove.append(track_idx)
+                continue
+        
+        # 从后往前删除，避免索引变化
+        for track_idx in reversed(tracks_to_remove):
+            removed_track = self.tracks.pop(track_idx)
+            if len(tracks_to_remove) <= 10:  # 只打印少量删除信息，避免输出过多
+                print(f"  删除轨迹 {removed_track.track_id}: 存在时间={removed_track.last_seen_frame - removed_track.frame_num + 1}帧")
+        
+        if len(tracks_to_remove) > 0:
+            print(f"  已删除 {len(tracks_to_remove)} 条不符合条件的轨迹")
+            
         # 最终统计
         total_stored = sum(len(tracks["players"][i]) for i in range(len(tracks["players"])))
         print(f"  调试：追踪完成，共存储 {total_stored} 个球员追踪结果")

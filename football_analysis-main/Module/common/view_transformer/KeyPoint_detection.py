@@ -54,7 +54,8 @@ class KeyPointDetector:
         Returns:
             sv.KeyPoints: 检测到的关键点
         """
-        result = self.model(frame, verbose=False, conf=0.7)[0]
+        result = self.model(frame, verbose=False)[0]
+
         keypoints = sv.KeyPoints.from_ultralytics(result)
 
         # 调试

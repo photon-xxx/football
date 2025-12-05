@@ -155,6 +155,7 @@ class TeamAssigner:
         
         return team_id
     
+    # 删除
     def assign_teams_from_tracks(self, video_frames, tracks, training_frames=20):
         """
         从追踪结果中分配球队（用于main.py）
@@ -270,6 +271,7 @@ class TeamAssigner:
                     tracks['players'][frame_num][player_id]['team'] = team_id
                     tracks['players'][frame_num][player_id]['team_color'] = self.team_colors[team_id]
     
+    # 接受yolo检测的输入，分类后返回raw数据，可以转换为追踪器输入
     def assign_teams_from_detections(self, detections, video_frames, nms_threshold=0.5, training_frames=100):
         """
         从检测结果中分配球队（用于test_no_tracker.py）
@@ -456,6 +458,7 @@ class TeamAssigner:
         print("处理完成！")
         return player_data
     
+    # 用于简单的检测，返回对于检测的简单球队分配结果
     def assign_teams_to_detections_raw(self, detections, video_frames, nms_threshold=0.5, training_frames=20):
         """
         从检测结果中分配球队，返回检测索引到球队的映射（用于追踪器）

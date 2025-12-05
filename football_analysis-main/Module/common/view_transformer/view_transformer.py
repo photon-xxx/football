@@ -178,7 +178,11 @@ if __name__ == "__main__":
     import argparse
     
     parser = argparse.ArgumentParser(description="ViewTransformer 测试")
-    parser.add_argument("--video", type=str, default="E:\Soccer\\football\\football_analysis-main\IO\input_videos\\test_pugongying_6s.mp4", help="输入视频路径")
+    # 获取项目根目录
+    current_file_dir = os.path.dirname(os.path.abspath(__file__))
+    project_root = os.path.dirname(os.path.dirname(os.path.dirname(current_file_dir)))
+    default_video_path = os.path.join(project_root, 'IO', 'input_videos', 'test_pugongying_6s.mp4')
+    parser.add_argument("--video", type=str, default=default_video_path, help="输入视频路径")
     parser.add_argument("--device", type=str, default="cuda", help="运行设备: cpu/cuda")
     args = parser.parse_args()
     

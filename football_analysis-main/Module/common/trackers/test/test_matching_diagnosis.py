@@ -9,10 +9,11 @@ import numpy as np
 import pickle
 
 # 添加项目根目录到路径
-sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), '../../..')))
+# 测试文件在 Module/common/trackers/test/，需要向上4层到达项目根目录
+sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), '../../../../')))
 
 from Module.common.trackers.tracker_pitch import Tracker, PitchTrack
-from test_no_tracker import load_tracking_inputs, TRACKING_INPUTS_STUB_PATH
+from get_trackerinput import load_tracking_inputs, TRACKING_INPUTS_STUB_PATH
 
 
 def diagnose_matching_process(tracker, tracking_inputs, start_frame=0, num_frames=5):
@@ -292,7 +293,10 @@ def main():
     
     # 创建追踪器
     # 注意：设置 sampling_rate >= video_fps 会自动禁用采样
-    MODEL_PATH = "yolov8n.pt"
+    # 配置路径
+    PROJECT_ROOT = os.path.abspath(os.path.join(os.path.dirname(__file__), '../../../../'))
+    MODEL_PATH = os.path.join(PROJECT_ROOT, 'Storage', 'models', 'Player_detection', 'football-player-detection.pt')
+    
     tracker = Tracker(
         MODEL_PATH,
         view_transformer=None,
