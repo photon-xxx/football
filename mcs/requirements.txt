@@ -1,0 +1,15 @@
+numpy>=1.24.0
+opencv-python>=4.8.0
+ultralytics>=8.0.0
+supervision>=0.16.0
+scipy>=1.10.0
+matplotlib>=3.7.0
+tqdm>=4.65.0
+Pillow>=10.0.0
+requests>=2.28.0
+uvicorn>=0.22.0
+python-multipart>=0.0.6
+cython
+kloppy>=3.0.0
+polars>=0.20.0
+unravelsports>=0.5.0

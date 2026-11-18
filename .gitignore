@@ -1,0 +1,52 @@
+# ---- Python ----
+__pycache__/
+*.py[cod]
+*$py.class
+*.egg-info/
+.ipynb_checkpoints/
+
+# ---- 模型权重（体积大，请自行下载） ----
+*.pt
+*.pth
+*.pth.tar
+*.onnx
+*.engine
+*.trt
+*.wts
+
+# ---- 中台运行产物 ----
+mcs/models/
+mcs/output/
+mcs/ocr_input/
+mcs/store/
+mcs/local_calibration/
+mcs/configs/
+
+# ---- 标注工具产物 ----
+annotation/outputs/
+annotation/logs/
+
+# ---- 第三方跟踪器（外部依赖，见 README §3.1） ----
+mcs/BoT-SORT/
+
+# ---- 单机位基线的实验产物 ----
+football_analysis-main/IO/input_videos/
+football_analysis-main/IO/output_videos/
+football_analysis-main/IO/figures/
+football_analysis-main/**/*.avi
+football_analysis-main/**/*.mp4
+football_analysis-main/**/*.zip
+football_analysis-main/Storage/models/
+football_analysis-main/Storage/stubs/
+
+# ---- 本地整合副本（含 BoT-SORT 权重，不入库） ----
+football_analysis-main/mcs版本/
+
+# ---- IDE / OS ----
+.idea/workspace.xml
+.idea/dataSources/
+.idea/httpRequests/
+.idea/sshConfigs.xml
+.vscode/
+Thumbs.db
+.DS_Store

@@ -1,0 +1,6 @@
+# mcbyte-track-repair-ui 实验配置
+goal: "用 bbox 与二分跳转交互定位并修复 McByte 单目标 ID switch"
+input: ""        # 输入视频/数据路径
+sampling: ""     # 采样策略, 如 uniform num=200
+params: {}      # 关键超参
+seed: 0

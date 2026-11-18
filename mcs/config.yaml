@@ -1,0 +1,18 @@
+dir_path: "D:/Edge"
+video_name: "4v4+3-30s.mp4"
+CAMERA_NAME: "wuchuan0430"
+MCS_NAME: null
+config: "HalfWuChuanConfiguration"
+GROUP_CONFIGS: [
+    {'group': 0, 'is_closed': True},  # 组1：线性
+    # {'group': 1, 'is_closed': True},   # 组2：环形
+    # {'group': 2, 'is_closed': false}  # 组3：线性
+  ]
+PAIR_CONFIGS: [
+    # {'group1': 0, 'group2': 1, 'type': 'both'},      # 组1↔组2：重心+最近点
+    # {'group1': 1, 'group2': 2, 'type': 'both'},    # 组2↔组3：仅重心
+    # {'group1': 0, 'group2': 2, 'type': 'both'}   # 组1↔组3：仅最近点
+  ]
+jac: "3-point" # 差分格式，可选 "2-point" 或 "3-point"
+reprojection_eps: 10.0 # 重投影误差判定
+enable_orientation: true # 是否启用保定向判定
